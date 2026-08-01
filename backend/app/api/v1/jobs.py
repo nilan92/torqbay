@@ -10,8 +10,10 @@ from app.db.session import get_db
 from app.models.asset import Asset
 from app.models.customer import Customer
 from app.models.job import Job, JobStatus
+from app.models.job_labor_entry import JobLaborEntry
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobListResponse, JobRead, JobStatusUpdate, JobUpdate
+from app.schemas.job_labor_entry import JobLaborEntryCreate, JobLaborEntryRead
 
 router = APIRouter()
 
@@ -144,3 +146,42 @@ def update_job_status(
     db.commit()
     db.refresh(job)
     return job
+
+
+@router.post(
+    "/jobs/{job_id}/labor-entries", response_model=JobLaborEntryRead, status_code=status.HTTP_201_CREATED
+)
+def create_labor_entry(
+    job_id: str,
+    payload: JobLaborEntryCreate,
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> JobLaborEntry:
+    job = (
+        db.query(Job)
+        .filter(Job.id == job_id, Job.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    technician = (
+        db.query(User)
+        .filter(User.id == payload.technician_id, User.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if technician is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found")
+
+    entry = JobLaborEntry(
+        tenant_id=current_user.tenant_id,
+        job_id=job_id,
+        technician_id=payload.technician_id,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        hourly_rate=payload.hourly_rate,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
