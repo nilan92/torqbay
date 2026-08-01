@@ -27,7 +27,7 @@ Base path: `/api/v1`. JSON in, JSON out. Auth via `Authorization: Bearer <JWT>`.
 - `POST /admin/tenants` — provision a new tenant + owner user
 - `GET /admin/tenants`
 - `PATCH /admin/tenants/{id}` — activate/suspend
-- `GET /admin/subscription-plans`, `POST /admin/subscription-plans` (Phase 3)
+- `GET /admin/subscription-plans`, `POST /admin/subscription-plans` (Phase 5)
 
 ### Users (owner/manager only, except self)
 - `GET /users`
@@ -60,14 +60,23 @@ Base path: `/api/v1`. JSON in, JSON out. Auth via `Authorization: Bearer <JWT>`.
 - `GET /invoices`, `GET /invoices/{id}`
 - `GET /invoices/{id}/pdf` — signed download URL
 - `POST /invoices/{id}/payments` — record a payment (method = cash/card/bank_transfer today)
-- `POST /invoices/{id}/payments/gateway` — Phase 2: initiate gateway/QR payment
-- `POST /webhooks/payments/{gateway}` — Phase 2: gateway callback, unauthenticated but signature-verified
+- `POST /invoices/{id}/payments/gateway` — Phase 4: initiate gateway/QR payment
+- `POST /webhooks/payments/{gateway}` — Phase 4: gateway callback, unauthenticated but signature-verified
 
 ### Expenses
 - `GET/POST /expenses`
 - `PATCH/DELETE /expenses/{id}`
+- `GET/POST /recurring-expenses`
+- `PATCH /recurring-expenses/{id}` — edit amount or pause (`is_active`)
 
-### Notifications (Phase 2)
+### Payroll (owner/manager only)
+- `GET/POST /employee-compensation` — set/update a staff member's pay terms
+- `GET/POST /payroll-runs`
+- `POST /payroll-runs/{id}/finalize` — computes payslips, creates the linked expense
+- `GET /payroll-runs/{id}/payslips`
+- `GET /payslips/me` — technician's own payslip history, no one else's
+
+### Notifications (Phase 4)
 - `GET /notifications` — log/history per customer or tenant
 - (Sending is triggered internally by job/invoice/payment events, not a
   client-called endpoint — see [architecture doc](02-architecture.md))
@@ -77,6 +86,10 @@ Base path: `/api/v1`. JSON in, JSON out. Auth via `Authorization: Bearer <JWT>`.
 - `GET /reports/workshop-kpis?from=&to=`
 - `GET /reports/job-profitability?from=&to=`
 
+### Business advisor (Phase 2 — see [business advisor doc](09-business-advisor.md))
+- `GET /insights` — active, non-dismissed insights for the tenant
+- `POST /insights/{key}/dismiss` — optional `snooze_days`
+
 ## Auth & role matrix (summary)
 
 | Endpoint group | Owner | Manager | Technician | Front desk |
@@ -85,8 +98,10 @@ Base path: `/api/v1`. JSON in, JSON out. Auth via `Authorization: Bearer <JWT>`.
 | Customers/Jobs | full | full | own jobs only | full |
 | Inventory | full | full | view only | full |
 | Invoices/Payments | full | full | — | full |
-| Expenses | full | full | — | — |
+| Expenses/Recurring expenses | full | full | — | — |
+| Payroll | full | full (not own pay terms) | own payslips only | — |
 | Reports | full | full | — | — |
+| Business advisor | full | full | — | — |
 | Tenant settings/billing | full | — | — | — |
 
 Full role/permission detail lives in code (`core/permissions.py`), not

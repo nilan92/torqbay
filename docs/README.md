@@ -9,7 +9,10 @@ Planning docs written before development starts. Read in order.
 5. [Mobile App](05-mobile-app.md) — Expo app structure, screens, navigation
 6. [Invoice Template](06-invoice-template.md) — PDF invoice spec
 7. [Sri Lanka Localization](07-sri-lanka-localization.md) — currency, tax, payment gateways, SMS/WhatsApp providers
-8. [Roadmap](08-roadmap.md) — phased build plan
+8. [Roadmap](08-roadmap.md) — phased build plan (7 phases)
+9. [Business Advisor](09-business-advisor.md) — rule-based growth/pitfall insights (Phase 2)
+10. [AI Features](10-ai-features.md) — AI chat, consultant reports, customer chatbot, MCP server (Phase 6)
+11. [Repair Guides](11-repair-guides.md) — shared video/text reference library by vehicle model (Phase 3)
 
 ## Quick facts
 

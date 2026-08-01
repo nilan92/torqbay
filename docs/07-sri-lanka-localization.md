@@ -27,7 +27,7 @@ config/data change, not a rewrite.
   it — normalize on input (strip leading `0`, add `+94`) so SMS/WhatsApp
   providers always receive a consistent format.
 
-## Payment gateway (Phase 2)
+## Payment gateway (Phase 4)
 
 Two realistic options, both fit the `payments.gateway` field already in
 the data model without a schema change:
@@ -40,13 +40,13 @@ the data model without a schema change:
   Relevant if the goal is "any bank app can pay by scanning the
   workshop's QR," which fits the "QR payments" ask directly.
 
-Recommendation when Phase 2 starts: PayHere first (single integration,
+Recommendation when Phase 4 starts: PayHere first (single integration,
 covers card + wallet), LankaQR as a follow-up for QR-specific in-person
 payments. Both are additive — no rework of `payments`/`invoices` needed,
 just a new `integrations/payhere.py` (or `lankaqr.py`) implementing the
 existing payment-gateway interface.
 
-## SMS provider (Phase 2)
+## SMS provider (Phase 4)
 
 Local aggregators (e.g. **notify.lk**, or direct APIs from **Dialog** or
 **Mobitel**) generally deliver more reliably and cheaply to Sri Lankan
@@ -55,7 +55,7 @@ local aggregator with a simple REST API; the `integrations/sms.py`
 interface (`send(to, message)`) means swapping providers later is a
 one-file change.
 
-## WhatsApp (Phase 2)
+## WhatsApp (Phase 4)
 
 Use the **WhatsApp Business Cloud API** (Meta) directly, or through a
 Business Solution Provider (e.g. Gupshup, 360dialog, Twilio) if you'd
@@ -63,7 +63,7 @@ rather not manage Meta's app review/verification process yourself.
 Sri Lankan numbers work fine on the Cloud API. Message templates for
 proactive notifications (job status, invoice sent, payment reminder) must
 be pre-approved by Meta before use — plan for template approval lead time
-before the Phase 2 build, not during it.
+before the Phase 4 build, not during it.
 
 ## Notification triggers (both channels)
 

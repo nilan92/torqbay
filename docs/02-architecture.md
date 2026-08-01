@@ -42,15 +42,16 @@ app/
                   invoices, payments, notifications, performance, subscriptions
   services/       business logic: invoice numbering + PDF rendering,
                   performance aggregation queries, notification dispatch
-  integrations/   external providers: payment gateway, SMS, WhatsApp —
-                  each behind a small interface so providers can be swapped
+  integrations/   external providers: payment gateway, SMS, WhatsApp,
+                  Claude API (AI features, Phase 6) — each behind a small
+                  interface so providers can be swapped
   templates/      Jinja2 HTML templates (invoice PDF)
 ```
 
 **Integration abstraction**: payments, SMS, and WhatsApp are each defined
 as a small interface (`send(to, message) -> result`, `charge(...) -> result`)
 with a "log only" / no-op implementation for Phase 1 and a real provider
-implementation swapped in for Phase 2. This is the same pluggable pattern
+implementation swapped in for Phase 4. This is the same pluggable pattern
 already used for the `Payment.method` field — the point is that adding a
 real provider later is a new implementation of an existing interface, not
 a redesign.

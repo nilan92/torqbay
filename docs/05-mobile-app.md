@@ -5,6 +5,28 @@ styling, React Query for server state. See `expo-native-ui` and
 `expo-tailwind-setup` skills in this environment when implementation
 starts.
 
+## Design principle: straightforward over powerful
+
+The user of this app is a workshop owner or staff member, not a software
+person — most screens should be understandable without a manual. This
+governs every screen decision below, not just a nice-to-have:
+
+- Prefer a short list of clear actions over a settings-heavy screen with
+  every option exposed. Advanced/rare options move to a secondary screen,
+  not a toggle cluttering the main one.
+- Numbers are labeled in plain words, not accounting jargon — "Money owed
+  to you" not "Accounts receivable"; "Your cut after costs" not "Net
+  margin." This applies directly to the [business advisor](09-business-advisor.md)
+  screen, where the whole point is plain-language advice, not a finance
+  report.
+- Every destructive or hard-to-reverse action (cancel a job, delete an
+  inventory item with history, void an invoice) gets a plain-language
+  confirmation, not a generic "Are you sure?"
+- New staff (especially technicians) should be productive after one
+  walkthrough: the job detail screen is the one they'll open dozens of
+  times a day, so it gets the most design attention, not the settings
+  screens an owner opens once a month.
+
 ## Navigation structure
 
 ```
@@ -28,17 +50,22 @@ app/
       purchase-orders.tsx
     finance/
       invoices.tsx
-      expenses.tsx
+      expenses.tsx              -- includes recurring expenses (rent, utilities)
       invoice/[id].tsx         -- invoice detail, PDF preview/share, record payment
+      payroll/
+        index.tsx               -- payroll runs, owner/manager only
+        run/[id].tsx            -- payslip breakdown per staff member
+        my-payslips.tsx         -- technician's own pay history only
     performance/
       index.tsx                -- workshop KPIs
       technicians.tsx          -- per-technician performance
+      advisor.tsx              -- business advisor: plain-language insight cards
     settings/
       index.tsx
       profile.tsx
       tenant.tsx                -- owner only: business info, logo, tax rate
-      staff.tsx                 -- owner/manager only: manage users
-      subscription.tsx          -- owner only, Phase 3
+      staff.tsx                 -- owner/manager only: manage users, pay terms
+      subscription.tsx          -- owner only, Phase 5
   _layout.tsx
 ```
 
@@ -54,8 +81,10 @@ enforces this on every request regardless of what the UI shows):
 | Jobs | ✓ | ✓ | ✓ (assigned only) | ✓ |
 | Customers | ✓ | ✓ | — | ✓ |
 | Inventory | ✓ | ✓ | view only | ✓ |
-| Finance | ✓ | ✓ | — | ✓ (no expenses) |
+| Finance | ✓ | ✓ | — | ✓ (no expenses/payroll) |
+| Payroll | ✓ | ✓ (not own pay terms) | own payslips only | — |
 | Performance | ✓ | ✓ | — | — |
+| Business advisor | ✓ | ✓ | — | — |
 | Settings | ✓ (full) | limited | limited | limited |
 
 ## Key screens — practical notes
@@ -71,6 +100,10 @@ enforces this on every request regardless of what the UI shows):
 - **Dashboard**: role-appropriate summary cards — owner/manager see
   revenue + open jobs + low stock alerts; technician sees their assigned
   jobs only.
+- **Advisor screen**: a short stack of dismissible cards (not a report to
+  scroll through) — one insight, one plain-language sentence of why it
+  matters, one suggested action, a "dismiss"/"remind me later" control.
+  See [business advisor doc](09-business-advisor.md) for the rule catalog.
 
 ## Offline behavior
 
