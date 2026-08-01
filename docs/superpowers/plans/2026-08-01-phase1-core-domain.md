@@ -1670,6 +1670,8 @@ git commit -m "feat: add job status transition enforcement"
 
 ## Task 9: Job Labor Entries
 
+**Scope note (revised after Task 8):** technicians will not use this app directly day to day — they're occupied with hands-on repair work, not a phone/tablet. Front-desk/manager/owner staff log time on a technician's behalf. This task is therefore staff-only: no technician self-logging path, no "use my own id if unspecified" fallback. `technician_id` is a required field in the request, always naming who the time is being logged for, and is validated to be a real user in the caller's own tenant (closes the same kind of gap flagged as a Minor item after Task 6, scoped here to this one endpoint).
+
 **Files:**
 - Create: `backend/app/models/job_labor_entry.py`
 - Create: `backend/app/schemas/job_labor_entry.py`
@@ -1678,8 +1680,8 @@ git commit -m "feat: add job status transition enforcement"
 - Test: `backend/tests/test_job_labor_entries.py`
 
 **Interfaces:**
-- Consumes: `app.api.v1.jobs._get_job_or_404`
-- Produces: `app.models.job_labor_entry.JobLaborEntry` — `TenantScopedMixin` fields plus `job_id: str`, `technician_id: str`, `start_time: datetime`, `end_time: datetime | None`, `hourly_rate: float`. `app.schemas.job_labor_entry.JobLaborEntryRead` / `JobLaborEntryCreate`. `POST /api/v1/jobs/{job_id}/labor-entries` — a `technician` may only log time against their own assigned job (using their own `id`, ignoring any `technician_id` in the payload); staff roles may log an entry for any technician on any job in their tenant (e.g. for corrections).
+- Consumes: `app.api.v1.customers.STAFF_ROLES`
+- Produces: `app.models.job_labor_entry.JobLaborEntry` — `TenantScopedMixin` fields plus `job_id: str`, `technician_id: str`, `start_time: datetime`, `end_time: datetime | None`, `hourly_rate: float`. `app.schemas.job_labor_entry.JobLaborEntryRead` / `JobLaborEntryCreate`. `POST /api/v1/jobs/{job_id}/labor-entries` — staff roles only (`owner`/`manager`/`frontdesk`); 403 for `technician`. Validates the job belongs to the caller's tenant (404 otherwise) and that `technician_id` refers to a real user in the caller's tenant (404 otherwise) before creating the entry.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1729,15 +1731,20 @@ def _create_job(client, token, assigned_technician_id=None):
     return client.post("/api/v1/jobs", json=payload, headers={"Authorization": f"Bearer {token}"}).json()
 
 
-def test_assigned_technician_can_log_their_own_time(client, platform_admin):
+def test_owner_can_log_time_for_a_technician(client, platform_admin):
     token = _owner_token(client, platform_admin)
-    tech_token, tech_id = _create_technician(client, token)
+    _tech_token, tech_id = _create_technician(client, token)
     job = _create_job(client, token, assigned_technician_id=tech_id)
 
     response = client.post(
         f"/api/v1/jobs/{job['id']}/labor-entries",
-        json={"start_time": "2026-08-01T09:00:00Z", "end_time": "2026-08-01T10:30:00Z", "hourly_rate": 1500.0},
-        headers={"Authorization": f"Bearer {tech_token}"},
+        json={
+            "start_time": "2026-08-01T09:00:00Z",
+            "end_time": "2026-08-01T10:30:00Z",
+            "hourly_rate": 1500.0,
+            "technician_id": tech_id,
+        },
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 201
@@ -1747,33 +1754,46 @@ def test_assigned_technician_can_log_their_own_time(client, platform_admin):
     assert body["hourly_rate"] == 1500.0
 
 
-def test_technician_cannot_log_time_on_an_unassigned_job(client, platform_admin):
+def test_technician_role_cannot_log_time(client, platform_admin):
     token = _owner_token(client, platform_admin, email="owner-labor2@example.com")
-    tech_token, _tech_id = _create_technician(client, token, email="tech-labor2@example.com")
-    job = _create_job(client, token)
-
-    response = client.post(
-        f"/api/v1/jobs/{job['id']}/labor-entries",
-        json={"start_time": "2026-08-01T09:00:00Z", "hourly_rate": 1500.0},
-        headers={"Authorization": f"Bearer {tech_token}"},
-    )
-
-    assert response.status_code == 404
-
-
-def test_owner_can_log_time_for_a_specific_technician(client, platform_admin):
-    token = _owner_token(client, platform_admin, email="owner-labor3@example.com")
-    tech_token, tech_id = _create_technician(client, token, email="tech-labor3@example.com")
+    tech_token, tech_id = _create_technician(client, token, email="tech-labor2@example.com")
     job = _create_job(client, token, assigned_technician_id=tech_id)
 
     response = client.post(
         f"/api/v1/jobs/{job['id']}/labor-entries",
         json={"start_time": "2026-08-01T09:00:00Z", "hourly_rate": 1500.0, "technician_id": tech_id},
+        headers={"Authorization": f"Bearer {tech_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_labor_entry_rejects_unknown_technician(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-labor3@example.com")
+    job = _create_job(client, token)
+
+    response = client.post(
+        f"/api/v1/jobs/{job['id']}/labor-entries",
+        json={"start_time": "2026-08-01T09:00:00Z", "hourly_rate": 1500.0, "technician_id": "does-not-exist"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 201
-    assert response.json()["technician_id"] == tech_id
+    assert response.status_code == 404
+
+
+def test_labor_entry_for_job_in_another_tenant_returns_404(client, platform_admin):
+    token_a = _owner_token(client, platform_admin, email="owner-labor-a@example.com")
+    token_b = _owner_token(client, platform_admin, email="owner-labor-b@example.com")
+    _tech_token, tech_id_b = _create_technician(client, token_b, email="tech-labor-b@example.com")
+    job_a = _create_job(client, token_a)
+
+    response = client.post(
+        f"/api/v1/jobs/{job_a['id']}/labor-entries",
+        json={"start_time": "2026-08-01T09:00:00Z", "hourly_rate": 1500.0, "technician_id": tech_id_b},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+
+    assert response.status_code == 404
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1827,7 +1847,7 @@ class JobLaborEntryCreate(BaseModel):
     start_time: datetime
     end_time: datetime | None = None
     hourly_rate: float
-    technician_id: str | None = None
+    technician_id: str
 ```
 
 - [ ] **Step 5: Register the model with Alembic**
@@ -1855,12 +1875,9 @@ from app.schemas.job_labor_entry import JobLaborEntryCreate, JobLaborEntryRead
 def create_labor_entry(
     job_id: str,
     payload: JobLaborEntryCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
     db: Annotated[Session, Depends(get_db)],
 ) -> JobLaborEntry:
-    if current_user.role not in (*STAFF_ROLES, UserRole.technician):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted for this role")
-
     job = (
         db.query(Job)
         .filter(Job.id == job_id, Job.tenant_id == current_user.tenant_id)
@@ -1869,17 +1886,18 @@ def create_labor_entry(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    if current_user.role == UserRole.technician:
-        if job.assigned_technician_id != current_user.id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        technician_id = current_user.id
-    else:
-        technician_id = payload.technician_id or current_user.id
+    technician = (
+        db.query(User)
+        .filter(User.id == payload.technician_id, User.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if technician is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found")
 
     entry = JobLaborEntry(
         tenant_id=current_user.tenant_id,
         job_id=job_id,
-        technician_id=technician_id,
+        technician_id=payload.technician_id,
         start_time=payload.start_time,
         end_time=payload.end_time,
         hourly_rate=payload.hourly_rate,
@@ -1893,7 +1911,7 @@ def create_labor_entry(
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_job_labor_entries.py -v`
-Expected: PASS (3 tests)
+Expected: PASS (4 tests)
 
 - [ ] **Step 8: Generate and apply the migration**
 
@@ -1907,13 +1925,13 @@ Expected: exits 0.
 - [ ] **Step 9: Run the full suite**
 
 Run: `.venv/bin/pytest -v`
-Expected: all pass, no regressions. This is the last task in the plan — confirm the total test count makes sense (should be the backend foundation's 37 plus this plan's new tests: 4 customer model/API-ish... count precisely from the actual run output, don't guess a number here).
+Expected: all pass, no regressions. This is the last task in the plan — confirm the total test count makes sense from the actual run output, don't guess a number here.
 
 - [ ] **Step 10: Commit**
 
 ```bash
 git add backend/app/models/job_labor_entry.py backend/app/schemas/job_labor_entry.py backend/app/api/v1/jobs.py backend/alembic/env.py backend/alembic/versions/ backend/tests/test_job_labor_entries.py
-git commit -m "feat: add job labor entry tracking"
+git commit -m "feat: add job labor entry tracking (staff-logged, on behalf of a technician)"
 ```
 
 ---
@@ -1922,6 +1940,6 @@ git commit -m "feat: add job labor entry tracking"
 
 - `.venv/bin/pytest -v` (run from `backend/`) passes with zero failures, output pristine aside from the already-tracked upstream FastAPI/Starlette deprecation warnings.
 - `alembic upgrade head` applies all new migrations (customers, assets, jobs, job_labor_entries) cleanly.
-- Manual smoke test: as an owner, create a customer, an asset for that customer, and a job referencing both; assign a technician; log in as that technician and confirm they see only that one job in `GET /jobs`; walk the job through `open → in_progress → done` via `PATCH /jobs/{id}/status`; log a labor entry as the technician.
+- Manual smoke test: as an owner, create a customer, an asset for that customer, and a job referencing both; assign a technician; log in as that technician and confirm they see only that one job in `GET /jobs`; walk the job through `open → in_progress → done` via `PATCH /jobs/{id}/status` (as the owner, since staff drives this in practice — technicians won't be using the app day to day); log a labor entry for that technician as the owner.
 - Tenant isolation re-confirmed at every new resource type: a customer/asset/job ID from tenant A returns 404 when queried by a user in tenant B (not just for the top-level list endpoints — by-ID lookups too).
 - This plan does not cover: `job_parts` (deferred to the Inventory sub-plan), invoice generation or the `invoiced`/`paid` job statuses (Finance sub-plan), or any mobile app work (later sub-plans).
