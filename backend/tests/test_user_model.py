@@ -43,15 +43,19 @@ def test_user_belongs_to_a_tenant_and_has_a_role():
 
 def test_user_email_is_globally_unique():
     session = _session()
-    tenant = Tenant(name="Colombo Auto Repair")
-    session.add(tenant)
+    tenant1 = Tenant(name="Colombo Auto Repair")
+    session.add(tenant1)
+    session.commit()
+
+    tenant2 = Tenant(name="Kandy Repair Shop")
+    session.add(tenant2)
     session.commit()
 
     session.add(
         User(
-            tenant_id=tenant.id,
+            tenant_id=tenant1.id,
             name="Nimal Perera",
-            email="dupe@colomboauto.lk",
+            email="dupe@example.com",
             password_hash="hashed",
             role=UserRole.owner,
         )
@@ -60,9 +64,9 @@ def test_user_email_is_globally_unique():
 
     session.add(
         User(
-            tenant_id=tenant.id,
+            tenant_id=tenant2.id,
             name="Second Person",
-            email="dupe@colomboauto.lk",
+            email="dupe@example.com",
             password_hash="hashed",
             role=UserRole.manager,
         )
