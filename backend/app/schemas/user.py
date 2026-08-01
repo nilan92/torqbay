@@ -21,3 +21,10 @@ class UserCreate(BaseModel):
     phone: str | None = None
     password: str
     role: UserRole
+
+
+class UserListResponse(BaseModel):
+    items: list[UserRead]
+    total: int
+    page: int
+    page_size: int

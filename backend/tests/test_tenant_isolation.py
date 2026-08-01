@@ -24,8 +24,8 @@ def test_tenant_cannot_see_another_tenants_users(client, platform_admin):
     assert response_a.status_code == 200
     assert response_b.status_code == 200
 
-    emails_visible_to_a = {user["email"] for user in response_a.json()}
-    emails_visible_to_b = {user["email"] for user in response_b.json()}
+    emails_visible_to_a = {user["email"] for user in response_a.json()["items"]}
+    emails_visible_to_b = {user["email"] for user in response_b.json()["items"]}
 
     assert emails_visible_to_a == {"ownera@example.com"}
     assert emails_visible_to_b == {"ownerb@example.com"}

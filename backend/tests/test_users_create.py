@@ -55,3 +55,25 @@ def test_create_user_rejects_duplicate_email(client, platform_admin):
     )
 
     assert response.status_code == 409
+
+
+def test_manager_cannot_create_user(client, platform_admin):
+    owner_token = _owner_token(client, platform_admin, email="ownerf@example.com")
+
+    client.post(
+        "/api/v1/users",
+        json={"name": "Manager", "email": "manager@example.com", "password": "managerpass123", "role": "manager"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    manager_login = client.post(
+        "/api/v1/auth/login", json={"email": "manager@example.com", "password": "managerpass123"}
+    )
+    manager_token = manager_login.json()["access_token"]
+
+    response = client.post(
+        "/api/v1/users",
+        json={"name": "Tech", "email": "tech2@example.com", "password": "techpass123", "role": "technician"},
+        headers={"Authorization": f"Bearer {manager_token}"},
+    )
+
+    assert response.status_code == 403

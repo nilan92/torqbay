@@ -7,7 +7,7 @@ from app.core.dependencies import get_current_user, require_role
 from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.user import UserCreate, UserRead
+from app.schemas.user import UserCreate, UserListResponse, UserRead
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ def read_me(current_user: Annotated[User, Depends(get_current_user)]) -> User:
 @router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: UserCreate,
-    current_user: Annotated[User, Depends(require_role(UserRole.owner, UserRole.manager))],
+    current_user: Annotated[User, Depends(require_role(UserRole.owner))],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
     existing = db.query(User).filter(User.email == payload.email).first()
@@ -41,9 +41,14 @@ def create_user(
     return user
 
 
-@router.get("/users", response_model=list[UserRead])
+@router.get("/users", response_model=UserListResponse)
 def list_users(
     current_user: Annotated[User, Depends(require_role(UserRole.owner, UserRole.manager))],
     db: Annotated[Session, Depends(get_db)],
-) -> list[User]:
-    return db.query(User).filter(User.tenant_id == current_user.tenant_id).all()
+    page: int = 1,
+    page_size: int = 20,
+) -> UserListResponse:
+    query = db.query(User).filter(User.tenant_id == current_user.tenant_id)
+    total = query.count()
+    users = query.offset((page - 1) * page_size).limit(page_size).all()
+    return UserListResponse(items=users, total=total, page=page, page_size=page_size)
