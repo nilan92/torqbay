@@ -28,6 +28,21 @@ def _get_job_or_404(db: Session, current_user: User, job_id: str) -> Job:
     return job
 
 
+def _get_technician_or_404(db: Session, tenant_id: str, technician_id: str) -> User:
+    technician = (
+        db.query(User)
+        .filter(
+            User.id == technician_id,
+            User.tenant_id == tenant_id,
+            User.role == UserRole.technician,
+        )
+        .first()
+    )
+    if technician is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found")
+    return technician
+
+
 @router.post("/jobs", response_model=JobRead, status_code=status.HTTP_201_CREATED)
 def create_job(
     payload: JobCreate,
@@ -44,11 +59,18 @@ def create_job(
 
     asset = (
         db.query(Asset)
-        .filter(Asset.id == payload.asset_id, Asset.tenant_id == current_user.tenant_id)
+        .filter(
+            Asset.id == payload.asset_id,
+            Asset.tenant_id == current_user.tenant_id,
+            Asset.customer_id == payload.customer_id,
+        )
         .first()
     )
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    if payload.assigned_technician_id is not None:
+        _get_technician_or_404(db, current_user.tenant_id, payload.assigned_technician_id)
 
     job = Job(
         tenant_id=current_user.tenant_id,
@@ -95,14 +117,11 @@ def update_job(
     current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
     db: Annotated[Session, Depends(get_db)],
 ) -> Job:
-    job = (
-        db.query(Job)
-        .filter(Job.id == job_id, Job.tenant_id == current_user.tenant_id)
-        .first()
-    )
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    job = _get_job_or_404(db, current_user, job_id)
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("assigned_technician_id") is not None:
+        _get_technician_or_404(db, current_user.tenant_id, updates["assigned_technician_id"])
+    for field, value in updates.items():
         setattr(job, field, value)
     db.commit()
     db.refresh(job)
@@ -157,21 +176,9 @@ def create_labor_entry(
     current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
     db: Annotated[Session, Depends(get_db)],
 ) -> JobLaborEntry:
-    job = (
-        db.query(Job)
-        .filter(Job.id == job_id, Job.tenant_id == current_user.tenant_id)
-        .first()
-    )
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = _get_job_or_404(db, current_user, job_id)
 
-    technician = (
-        db.query(User)
-        .filter(User.id == payload.technician_id, User.tenant_id == current_user.tenant_id)
-        .first()
-    )
-    if technician is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found")
+    _get_technician_or_404(db, current_user.tenant_id, payload.technician_id)
 
     entry = JobLaborEntry(
         tenant_id=current_user.tenant_id,

@@ -68,6 +68,47 @@ def test_create_job_rejects_unknown_customer(client, platform_admin):
     assert response.status_code == 404
 
 
+def test_create_job_rejects_unknown_assigned_technician(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-job4@example.com")
+    customer_id, asset_id = _create_customer_and_asset(client, token)
+
+    response = client.post(
+        "/api/v1/jobs",
+        json={
+            "customer_id": customer_id,
+            "asset_id": asset_id,
+            "title": "Should fail",
+            "assigned_technician_id": "does-not-exist",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_job_rejects_asset_belonging_to_different_customer(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-job5@example.com")
+    customer1_id = client.post(
+        "/api/v1/customers", json={"name": "Customer One"}, headers={"Authorization": f"Bearer {token}"}
+    ).json()["id"]
+    customer2_id = client.post(
+        "/api/v1/customers", json={"name": "Customer Two"}, headers={"Authorization": f"Bearer {token}"}
+    ).json()["id"]
+    asset2_id = client.post(
+        f"/api/v1/customers/{customer2_id}/assets",
+        json={"type": "vehicle", "label": "Honda Civic"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+
+    response = client.post(
+        "/api/v1/jobs",
+        json={"customer_id": customer1_id, "asset_id": asset2_id, "title": "Should fail"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
 def test_technician_only_sees_assigned_jobs(client, platform_admin):
     token = _owner_token(client, platform_admin, email="owner-job3@example.com")
     customer_id, asset_id = _create_customer_and_asset(client, token)

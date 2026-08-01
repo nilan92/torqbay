@@ -92,6 +92,20 @@ def test_labor_entry_rejects_unknown_technician(client, platform_admin):
     assert response.status_code == 404
 
 
+def test_labor_entry_rejects_technician_id_belonging_to_non_technician(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-labor4@example.com")
+    owner_id = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
+    job = _create_job(client, token)
+
+    response = client.post(
+        f"/api/v1/jobs/{job['id']}/labor-entries",
+        json={"start_time": "2026-08-01T09:00:00Z", "hourly_rate": 1500.0, "technician_id": owner_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
 def test_labor_entry_for_job_in_another_tenant_returns_404(client, platform_admin):
     token_a = _owner_token(client, platform_admin, email="owner-labor-a@example.com")
     token_b = _owner_token(client, platform_admin, email="owner-labor-b@example.com")
