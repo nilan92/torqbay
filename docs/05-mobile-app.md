@@ -3,7 +3,38 @@
 Built with Expo + Expo Router (file-based navigation), NativeWind for
 styling, React Query for server state. See `expo-native-ui` and
 `expo-tailwind-setup` skills in this environment when implementation
-starts.
+starts, plus the `frontend-design` skill for aesthetic direction —
+invoke all three when work reaches the mobile sub-plans (6-7), not just
+`expo-native-ui` in isolation.
+
+## Design principle: straightforward AND fun — not a chore
+
+Two principles that have to coexist, not trade off against each other:
+the app must be understandable without a manual (below), but it also
+shouldn't feel like filling out a government form. A technician opens the
+job screen dozens of times a day — if it feels satisfying to use, they'll
+actually keep data current instead of treating it as busywork to skip.
+
+- **Motion earns its keep**: a status change (job marked `done`, an
+  invoice marked `paid`) gets a small, quick, satisfying animation — not
+  a modal, not a toast that just says "Success." Completing something
+  should feel like completing something. Use Expo's built-in
+  `react-native-reanimated`/`expo-haptics` for this — a subtle haptic tap
+  on key actions (mark done, record payment) costs nothing to add and
+  makes the app feel physical rather than a form.
+- **A real visual identity, not default-component grey**: pick an actual
+  color system and type scale during the mobile sub-plan (via the
+  `frontend-design` skill) instead of shipping unstyled default
+  components — this is a product people will look at for hours a week,
+  it should look like somebody designed it on purpose.
+- **Personality without noise**: small delightful touches (a friendly
+  empty state instead of a blank list, a bit of character in a "no jobs
+  today" screen) are welcome; anything that adds a tap, a wait, or a
+  decision to a core workflow (creating a job, recording a payment) is
+  not — fun decorates the practical path, it never detours around it.
+- **This is a direction for the mobile sub-plans, not this backend
+  plan** — flagging it here now so it's not lost by the time
+  sub-plans 6-7 get written.
 
 ## Design principle: straightforward over powerful
 
