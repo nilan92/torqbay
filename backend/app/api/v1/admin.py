@@ -29,6 +29,10 @@ def create_tenant(
     _admin: Annotated[PlatformAdmin, Depends(get_current_admin)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Tenant:
+    existing = db.query(User).filter(User.email == payload.owner_email.lower()).first()
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
     tenant = Tenant(name=payload.name)
     db.add(tenant)
     db.flush()
@@ -36,7 +40,7 @@ def create_tenant(
     owner = User(
         tenant_id=tenant.id,
         name=payload.owner_name,
-        email=payload.owner_email,
+        email=payload.owner_email.lower(),
         password_hash=hash_password(payload.owner_password),
         role=UserRole.owner,
     )

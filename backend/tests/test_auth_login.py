@@ -1,3 +1,6 @@
+from app.models.tenant import Tenant
+
+
 def _create_tenant_and_owner(client, platform_admin, email="nimal@colomboauto.lk", password="ownerpass123"):
     admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
     admin_token = admin_login.json()["access_token"]
@@ -29,5 +32,17 @@ def test_login_with_wrong_password_returns_401(client, platform_admin):
     email, _ = _create_tenant_and_owner(client, platform_admin)
 
     response = client.post("/api/v1/auth/login", json={"email": email, "password": "wrong-password"})
+
+    assert response.status_code == 401
+
+
+def test_login_rejects_deactivated_tenant(client, platform_admin, db_session):
+    email, password = _create_tenant_and_owner(client, platform_admin)
+
+    tenant = db_session.query(Tenant).filter(Tenant.name == "Colombo Auto Repair").first()
+    tenant.is_active = False
+    db_session.commit()
+
+    response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
     assert response.status_code == 401

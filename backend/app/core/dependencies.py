@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.platform_admin import PlatformAdmin
+from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -17,11 +18,12 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
-    payload = decode_token(token)
-    if payload.get("type") != "access" or payload.get("aud") != "tenant_user":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    payload = decode_token(token, audience="tenant_user", token_type="access")
     user = db.get(User, payload.get("sub"))
     if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    tenant = db.get(Tenant, user.tenant_id)
+    if tenant is None or not tenant.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return user
 
@@ -39,9 +41,7 @@ def get_current_admin(
     token: Annotated[str, Depends(admin_oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> PlatformAdmin:
-    payload = decode_token(token)
-    if payload.get("type") != "access" or payload.get("aud") != "platform_admin":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    payload = decode_token(token, audience="platform_admin", token_type="access")
     admin = db.get(PlatformAdmin, payload.get("sub"))
     if admin is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

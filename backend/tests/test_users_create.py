@@ -57,6 +57,43 @@ def test_create_user_rejects_duplicate_email(client, platform_admin):
     assert response.status_code == 409
 
 
+def test_create_user_rejects_invalid_email(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="ownerg@example.com")
+
+    response = client.post(
+        "/api/v1/users",
+        json={"name": "Tech", "email": "not-an-email", "password": "techpass123", "role": "technician"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_users_rejects_invalid_page(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="ownerh@example.com")
+
+    response = client.get("/api/v1/users?page=0", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 422
+
+
+def test_create_user_rejects_duplicate_email_case_insensitive(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owneri@example.com")
+
+    client.post(
+        "/api/v1/users",
+        json={"name": "Person", "email": "Person@Example.com", "password": "techpass123", "role": "technician"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    response = client.post(
+        "/api/v1/users",
+        json={"name": "Person Two", "email": "person@example.com", "password": "techpass123", "role": "technician"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 409
+
+
 def test_manager_cannot_create_user(client, platform_admin):
     owner_token = _owner_token(client, platform_admin, email="ownerf@example.com")
 

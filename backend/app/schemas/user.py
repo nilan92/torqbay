@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.models.user import UserRole
 
@@ -17,7 +17,7 @@ class UserRead(BaseModel):
 
 class UserCreate(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     phone: str | None = None
     password: str
     role: UserRole

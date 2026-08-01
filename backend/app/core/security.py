@@ -36,9 +36,9 @@ def create_refresh_token(subject: str, audience: str) -> str:
     return _create_token(subject, audience, "refresh", timedelta(days=settings.jwt_refresh_expire_days))
 
 
-def decode_token(token: str) -> dict[str, Any]:
+def decode_token(token: str, audience: str, token_type: str) -> dict[str, Any]:
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             settings.jwt_secret,
             algorithms=["HS256"],
@@ -46,3 +46,6 @@ def decode_token(token: str) -> dict[str, Any]:
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
+    if payload.get("type") != token_type or payload.get("aud") != audience:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return payload

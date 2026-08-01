@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_role
@@ -23,14 +23,14 @@ def create_user(
     current_user: Annotated[User, Depends(require_role(UserRole.owner))],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
-    existing = db.query(User).filter(User.email == payload.email).first()
+    existing = db.query(User).filter(User.email == payload.email.lower()).first()
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     user = User(
         tenant_id=current_user.tenant_id,
         name=payload.name,
-        email=payload.email,
+        email=payload.email.lower(),
         phone=payload.phone,
         password_hash=hash_password(payload.password),
         role=payload.role,
@@ -45,8 +45,8 @@ def create_user(
 def list_users(
     current_user: Annotated[User, Depends(require_role(UserRole.owner, UserRole.manager))],
     db: Annotated[Session, Depends(get_db)],
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
 ) -> UserListResponse:
     query = db.query(User).filter(User.tenant_id == current_user.tenant_id)
     total = query.count()

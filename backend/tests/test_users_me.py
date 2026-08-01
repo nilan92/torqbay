@@ -1,3 +1,6 @@
+from app.models.tenant import Tenant
+
+
 def _login(client, platform_admin, email="nimal@colomboauto.lk", password="ownerpass123"):
     admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
     admin_token = admin_login.json()["access_token"]
@@ -61,5 +64,17 @@ def test_users_me_rejects_refresh_token(client, platform_admin):
     refresh_token = login.json()["refresh_token"]
 
     response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {refresh_token}"})
+
+    assert response.status_code == 401
+
+
+def test_users_me_rejects_token_after_tenant_deactivated(client, platform_admin, db_session):
+    token = _login(client, platform_admin)
+
+    tenant = db_session.query(Tenant).filter(Tenant.name == "Colombo Auto Repair").first()
+    tenant.is_active = False
+    db_session.commit()
+
+    response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 401
