@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.platform_admin import PlatformAdmin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 admin_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/admin/auth/login")
@@ -24,6 +24,15 @@ def get_current_user(
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return user
+
+
+def require_role(*roles: UserRole):
+    def checker(user: Annotated[User, Depends(get_current_user)]) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted for this role")
+        return user
+
+    return checker
 
 
 def get_current_admin(
