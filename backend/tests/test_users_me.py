@@ -1,0 +1,80 @@
+from app.models.tenant import Tenant
+
+
+def _login(client, platform_admin, email="nimal@colomboauto.lk", password="ownerpass123"):
+    admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
+    admin_token = admin_login.json()["access_token"]
+    client.post(
+        "/api/v1/admin/tenants",
+        json={
+            "name": "Colombo Auto Repair",
+            "owner_name": "Nimal Perera",
+            "owner_email": email,
+            "owner_password": password,
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    return login.json()["access_token"]
+
+
+def test_users_me_requires_auth(client):
+    response = client.get("/api/v1/users/me")
+
+    assert response.status_code == 401
+
+
+def test_users_me_returns_current_user(client, platform_admin):
+    token = _login(client, platform_admin)
+
+    response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "nimal@colomboauto.lk"
+    assert body["role"] == "owner"
+
+
+def test_users_me_rejects_platform_admin_token(client, platform_admin):
+    admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
+    admin_token = admin_login.json()["access_token"]
+
+    response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 401
+
+
+def test_users_me_rejects_refresh_token(client, platform_admin):
+    admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
+    admin_token = admin_login.json()["access_token"]
+    client.post(
+        "/api/v1/admin/tenants",
+        json={
+            "name": "Colombo Auto Repair",
+            "owner_name": "Nimal Perera",
+            "owner_email": "nimal@colomboauto.lk",
+            "owner_password": "ownerpass123",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "nimal@colomboauto.lk", "password": "ownerpass123"},
+    )
+    refresh_token = login.json()["refresh_token"]
+
+    response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {refresh_token}"})
+
+    assert response.status_code == 401
+
+
+def test_users_me_rejects_token_after_tenant_deactivated(client, platform_admin, db_session):
+    token = _login(client, platform_admin)
+
+    tenant = db_session.query(Tenant).filter(Tenant.name == "Colombo Auto Repair").first()
+    tenant.is_active = False
+    db_session.commit()
+
+    response = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
