@@ -35,6 +35,10 @@ class JobUpdate(BaseModel):
     assigned_technician_id: str | None = None
 
 
+class JobStatusUpdate(BaseModel):
+    status: JobStatus
+
+
 class JobListResponse(BaseModel):
     items: list[JobRead]
     total: int
