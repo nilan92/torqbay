@@ -13,5 +13,5 @@ class PurchaseOrderItem(Base, TenantScopedMixin):
     inventory_item_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("inventory_items.id"), nullable=False, index=True
     )
-    quantity: Mapped[float] = mapped_column(Float, nullable=False)
-    unit_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    quantity: Mapped[float] = mapped_column(Float(precision=53), nullable=False)
+    unit_cost: Mapped[float] = mapped_column(Float(precision=53), nullable=False)

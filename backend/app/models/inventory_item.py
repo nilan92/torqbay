@@ -11,13 +11,13 @@ class InventoryItem(Base, TenantScopedMixin):
     sku: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    unit_cost: Mapped[float] = mapped_column(Float, nullable=False)
-    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    unit_cost: Mapped[float] = mapped_column(Float(precision=53), nullable=False)
+    unit_price: Mapped[float] = mapped_column(Float(precision=53), nullable=False)
     quantity_on_hand: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0", nullable=False
+        Float(precision=53), default=0.0, server_default="0", nullable=False
     )
     reorder_threshold: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0", nullable=False
+        Float(precision=53), default=0.0, server_default="0", nullable=False
     )
     supplier_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("suppliers.id"), nullable=True, index=True
