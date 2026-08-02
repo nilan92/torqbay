@@ -2614,7 +2614,7 @@ Expected: all tests pass — 65 pre-existing plus every test added in Tasks 1-13
 
 - [ ] **Step 4: Verify migrations apply from empty**
 
-Run: `cd backend && rm -f torqbay.db && .venv/bin/python -m alembic upgrade head`
+Run: `cd backend && rm -f dev.db && .venv/bin/python -m alembic upgrade head`
 Expected: every migration applies cleanly in order with no error
 
 - [ ] **Step 5: Commit**
