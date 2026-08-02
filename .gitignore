@@ -22,6 +22,9 @@ venv/
 .env
 .env.*
 !.env.example
+# mobile/.env holds only the public API host (EXPO_PUBLIC_ vars are inlined at
+# build time and are not secret) and must be committed for the app to build.
+!mobile/.env
 
 # OS
 .DS_Store
