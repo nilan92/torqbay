@@ -17,6 +17,7 @@ from app.schemas.purchase_order import (
     PurchaseOrderCreate,
     PurchaseOrderListResponse,
     PurchaseOrderRead,
+    PurchaseOrderStatusUpdate,
 )
 
 router = APIRouter()
@@ -120,6 +121,35 @@ def receive_purchase_order(
 
     po.status = PurchaseOrderStatus.received
     po.received_at = _now()
+    db.commit()
+    db.refresh(po)
+    return po
+
+
+_MANUAL_PO_TRANSITIONS: dict[PurchaseOrderStatus, set[PurchaseOrderStatus]] = {
+    PurchaseOrderStatus.draft: {PurchaseOrderStatus.ordered},
+    PurchaseOrderStatus.ordered: {PurchaseOrderStatus.draft},
+    PurchaseOrderStatus.received: set(),
+}
+
+
+@router.patch("/purchase-orders/{po_id}/status", response_model=PurchaseOrderRead)
+def update_purchase_order_status(
+    po_id: str,
+    payload: PurchaseOrderStatusUpdate,
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> PurchaseOrder:
+    po = _get_po_or_404(db, current_user.tenant_id, po_id)
+
+    allowed = _MANUAL_PO_TRANSITIONS.get(po.status, set())
+    if payload.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot transition purchase order from {po.status.value} to {payload.status.value}",
+        )
+
+    po.status = payload.status
     db.commit()
     db.refresh(po)
     return po

@@ -42,3 +42,7 @@ class PurchaseOrderListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class PurchaseOrderStatusUpdate(BaseModel):
+    status: PurchaseOrderStatus
