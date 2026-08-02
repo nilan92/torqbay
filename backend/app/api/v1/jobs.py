@@ -4,16 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.customers import STAFF_ROLES
+from app.api.v1.inventory_items import _get_item_or_404
 from app.core.dependencies import get_current_user, require_role
 from app.db.base import _now
 from app.db.session import get_db
 from app.models.asset import Asset
 from app.models.customer import Customer
+from app.models.inventory_item import InventoryItem
 from app.models.job import Job, JobStatus
 from app.models.job_labor_entry import JobLaborEntry
+from app.models.job_part import JobPart
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobListResponse, JobRead, JobStatusUpdate, JobUpdate
 from app.schemas.job_labor_entry import JobLaborEntryCreate, JobLaborEntryRead
+from app.schemas.job_part import JobPartCreate, JobPartRead
 
 router = APIRouter()
 
@@ -192,3 +196,45 @@ def create_labor_entry(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.post("/jobs/{job_id}/parts", response_model=JobPartRead, status_code=status.HTTP_201_CREATED)
+def create_job_part(
+    job_id: str,
+    payload: JobPartCreate,
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> JobPart:
+    _get_job_or_404(db, current_user, job_id)
+    _get_item_or_404(db, current_user.tenant_id, payload.inventory_item_id)
+
+    # Re-read under a row lock so concurrent decrements serialize on MySQL.
+    # SQLite ignores FOR UPDATE, which is harmless for the test suite.
+    item = (
+        db.query(InventoryItem)
+        .filter(
+            InventoryItem.id == payload.inventory_item_id,
+            InventoryItem.tenant_id == current_user.tenant_id,
+        )
+        .with_for_update()
+        .one()
+    )
+
+    available = item.quantity_on_hand
+    shortfall = max(0.0, payload.quantity - available)
+    item.quantity_on_hand = max(0.0, available - payload.quantity)
+
+    part = JobPart(
+        tenant_id=current_user.tenant_id,
+        job_id=job_id,
+        inventory_item_id=item.id,
+        quantity=payload.quantity,
+        unit_cost_at_time=item.unit_cost,
+        unit_price_at_time=item.unit_price,
+        overdrawn=shortfall > 0,
+        shortfall=shortfall,
+    )
+    db.add(part)
+    db.commit()
+    db.refresh(part)
+    return part
