@@ -6,7 +6,7 @@
 
 **Architecture:** Follows the existing tenant-scoped REST pattern exactly. An invoice is built once from a `done` job by snapshotting its labor entries and parts into `invoice_line_items`, so later edits to rates or prices never alter an issued invoice. Money flows one way: creating an invoice moves the job to `invoiced`; fully paying it moves the job to `paid`. Neither transition is reachable from the manual job-status endpoint, which already blocks them.
 
-**Tech Stack:** FastAPI, SQLAlchemy 2.0, Alembic, MySQL 8 (prod) / in-memory SQLite (tests), Jinja2 + WeasyPrint for PDF.
+**Tech Stack:** FastAPI, SQLAlchemy 2.0, Alembic, MySQL 8 (prod) / in-memory SQLite (tests), fpdf2 for PDF.
 
 ## Global Constraints
 
@@ -1876,39 +1876,44 @@ git commit -m "feat(invoicing): add currency and percentage formatting helpers"
 
 ---
 
-### Task 9: Invoice HTML template and render context
+### Task 9: Invoice PDF builder
 
 **Files:**
-- Create: `backend/app/templates/invoice/invoice.html`
-- Create: `backend/app/services/invoice_render.py`
+- Create: `backend/app/services/invoice_pdf.py`
 - Modify: `backend/requirements.txt`
 - Modify: `backend/requirements-dev.txt`
-- Test: `backend/tests/test_invoice_render.py`
+- Test: `backend/tests/test_invoice_pdf_builder.py`
 
 **Interfaces:**
 - Consumes: `Invoice`, `Tenant`, `Customer`, `Asset`, `Job`, `format_currency`, `format_percentage`
-- Produces: `render_invoice_html(db, invoice) -> str` — used by Task 10
+- Produces: `build_invoice_pdf(db, invoice) -> bytes` — used by Task 10
 
-**Why this is a separate task from PDF generation.** All the logic worth testing — assembling the context, formatting money, laying out line items — lives in HTML generation, which is pure Python plus Jinja2 and runs anywhere. Turning that HTML into a PDF is a thin call into WeasyPrint, which needs system graphics libraries (cairo, pango) that a macOS dev machine may not have. Splitting them means this task is fully testable everywhere, and only Task 10 depends on the system libraries.
+**Library choice, decided by measurement on the actual deploy target.** `docs/06-invoice-template.md` specifies WeasyPrint. **WeasyPrint cannot run on this host.** Its system dependency `libpango-1.0.so.0` is version 1.42.3; WeasyPrint requires >= 1.44 for `pango_context_set_round_glyph_positions`, and the account has no root access to upgrade it. Verified by installing WeasyPrint on the server and attempting a render, which raised:
 
-Layout follows `docs/06-invoice-template.md`: header band with logo and workshop details, invoice meta, bill-to block with asset info, line items table, totals, footer.
+```
+AttributeError: function/symbol 'pango_context_set_round_glyph_positions' not found
+in library 'libpango-1.0.so.0': /lib64/libpango-1.0.so.0: undefined symbol
+```
 
-- [ ] **Step 1: Add the dependencies**
+`fpdf2` is used instead. It is pure Python with no system dependencies, and was benchmarked on the same host at **2.4 ms per invoice render, 34 MB resident**. This matters because the account has a hard `LSAPI_CHILDREN` cap of 6 workers — a slow render blocks a worker that could be serving other requests. Update `docs/06-invoice-template.md` to match once this ships.
+
+Layout follows the section ordering in `docs/06-invoice-template.md`: header band with workshop details, invoice meta, bill-to block with asset info, line items table, totals, footer. Positioning is by coordinate rather than CSS, which is the cost of a library that actually runs here.
+
+- [ ] **Step 1: Add the dependency**
 
 Add to both `backend/requirements.txt` and `backend/requirements-dev.txt`:
 
 ```
-jinja2==3.1.6
-weasyprint==69.0
+fpdf2==2.8.7
 ```
 
-Install them: `cd backend && .venv/bin/pip install -r requirements-dev.txt`
+Install: `cd backend && .venv/bin/pip install -r requirements-dev.txt`
 
-If `weasyprint` fails to install locally (missing cairo/pango on macOS), that is expected and acceptable — Task 9 does not import it. Note the failure in your report and continue; Task 10 handles that case explicitly.
+Do NOT add `weasyprint` or `jinja2` — neither is used.
 
 - [ ] **Step 2: Write the failing test**
 
-Create `backend/tests/test_invoice_render.py`:
+Create `backend/tests/test_invoice_pdf_builder.py`:
 
 ```python
 from datetime import date
@@ -1919,7 +1924,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_line_item import InvoiceLineItem, InvoiceLineItemType
 from app.models.job import Job
 from app.models.tenant import Tenant
-from app.services.invoice_render import render_invoice_html
+from app.services.invoice_pdf import build_invoice_pdf
 
 
 def _full_invoice(db_session, **tenant_kwargs):
@@ -1973,191 +1978,100 @@ def _full_invoice(db_session, **tenant_kwargs):
     return invoice
 
 
-def test_html_contains_the_core_invoice_facts(db_session):
+def _extract_text(pdf_bytes):
+    """Crude text scrape.
+
+    fpdf2 writes uncompressed text operators by default, so asserting on the
+    raw bytes is enough to prove content reached the page without adding a
+    PDF-parsing dependency just for tests.
+    """
+    return pdf_bytes.decode("latin-1", errors="ignore")
+
+
+def test_pdf_is_a_valid_a4_document(db_session):
     invoice = _full_invoice(db_session)
 
-    html = render_invoice_html(db_session, invoice)
+    pdf = build_invoice_pdf(db_session, invoice)
 
-    assert "INV-2026-0001" in html
-    assert "Colombo Auto Repair" in html
-    assert "Nimal Perera" in html
-    assert "Toyota Corolla 2018" in html
-    assert "ABC-1234" in html
-    assert "Brake pad set" in html
+    assert pdf.startswith(b"%PDF-")
+    assert pdf.rstrip().endswith(b"%%EOF")
+    # A4 is 595.28 x 841.89 pt; fpdf2 writes the MediaBox in points
+    assert b"595.28" in pdf and b"841.89" in pdf
 
 
-def test_html_formats_money_in_sri_lankan_convention(db_session):
+def test_pdf_contains_the_core_invoice_facts(db_session):
     invoice = _full_invoice(db_session)
 
-    html = render_invoice_html(db_session, invoice)
+    text = _extract_text(build_invoice_pdf(db_session, invoice))
 
-    assert "LKR 12,980.00" in html
-    assert "LKR 11,000.00" in html
-    assert "18%" in html
+    for expected in (
+        "INV-2026-0001",
+        "Colombo Auto Repair",
+        "Nimal Perera",
+        "Toyota Corolla 2018",
+        "ABC-1234",
+        "Brake pad set",
+    ):
+        assert expected in text, f"{expected!r} missing from the PDF"
+
+
+def test_pdf_formats_money_in_sri_lankan_convention(db_session):
+    invoice = _full_invoice(db_session)
+
+    text = _extract_text(build_invoice_pdf(db_session, invoice))
+
+    assert "LKR 12,980.00" in text
+    assert "LKR 11,000.00" in text
+    assert "18%" in text
 
 
 def test_vat_number_is_omitted_when_not_registered(db_session):
     invoice = _full_invoice(db_session)
 
-    html = render_invoice_html(db_session, invoice)
+    text = _extract_text(build_invoice_pdf(db_session, invoice))
 
-    assert "VAT" not in html
+    assert "VAT" not in text
 
 
 def test_vat_number_is_shown_when_registered(db_session):
     invoice = _full_invoice(db_session, vat_registration_number="VAT-998877")
 
-    html = render_invoice_html(db_session, invoice)
+    text = _extract_text(build_invoice_pdf(db_session, invoice))
 
-    assert "VAT-998877" in html
+    assert "VAT-998877" in text
 
 
-def test_html_is_a_complete_document(db_session):
+def test_many_line_items_paginate_without_error(db_session):
+    """A long invoice must flow onto further pages rather than overflow one."""
     invoice = _full_invoice(db_session)
+    db_session.add_all([
+        InvoiceLineItem(
+            tenant_id=invoice.tenant_id, invoice_id=invoice.id,
+            description=f"Extra part {index}", quantity=1.0, unit_price=100.0,
+            line_total=100.0, type=InvoiceLineItemType.part,
+        )
+        for index in range(60)
+    ])
+    db_session.commit()
+    db_session.refresh(invoice)
 
-    html = render_invoice_html(db_session, invoice)
+    pdf = build_invoice_pdf(db_session, invoice)
 
-    assert html.strip().startswith("<!DOCTYPE html>")
-    assert "@page" in html
-    assert "A4" in html
+    assert pdf.startswith(b"%PDF-")
+    assert b"/Count 2" in pdf or b"/Count 3" in pdf, "expected a multi-page document"
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_render.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.invoice_render'`
+Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf_builder.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.invoice_pdf'`
 
-- [ ] **Step 4: Write the template**
+- [ ] **Step 4: Write the builder**
 
-Create `backend/app/templates/invoice/invoice.html`:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>{{ invoice.invoice_number }}</title>
-<style>
-  @page { size: A4; margin: 18mm 16mm; }
-  body { font-family: "Helvetica", "Arial", sans-serif; font-size: 10pt; color: #222; }
-  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #222; padding-bottom: 10px; }
-  .logo { max-height: 60px; max-width: 180px; }
-  .workshop { text-align: right; font-size: 9pt; line-height: 1.5; }
-  .workshop .name { font-size: 13pt; font-weight: bold; }
-  .meta { display: flex; justify-content: space-between; margin-top: 18px; }
-  .meta .number { font-size: 15pt; font-weight: bold; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 8pt;
-           text-transform: uppercase; letter-spacing: 0.5px; background: #eee; color: #444; }
-  .badge.paid { background: #d8f3dc; color: #1b4332; }
-  .badge.sent { background: #e0e7ff; color: #1e3a8a; }
-  .badge.overdue { background: #fee2e2; color: #991b1b; }
-  .badge.cancelled { background: #f3f4f6; color: #6b7280; }
-  .billto { margin-top: 18px; font-size: 9.5pt; line-height: 1.5; }
-  .billto .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5px; color: #777; }
-  table.items { width: 100%; border-collapse: collapse; margin-top: 18px; }
-  table.items th { text-align: left; font-size: 8.5pt; text-transform: uppercase;
-                   letter-spacing: 0.5px; color: #555; border-bottom: 1px solid #999; padding: 6px 4px; }
-  table.items td { padding: 7px 4px; border-bottom: 1px solid #eee; }
-  table.items .num { text-align: right; }
-  .totals { margin-top: 14px; width: 45%; margin-left: auto; }
-  .totals td { padding: 4px 4px; }
-  .totals .num { text-align: right; }
-  .totals .grand td { border-top: 2px solid #222; font-size: 12pt; font-weight: bold; padding-top: 8px; }
-  .footer { margin-top: 26px; border-top: 1px solid #ddd; padding-top: 10px;
-            font-size: 8.5pt; color: #666; line-height: 1.5; }
-  .generated { margin-top: 6px; font-size: 7.5pt; color: #aaa; }
-</style>
-</head>
-<body>
-
-<div class="header">
-  <div>
-    {% if tenant.logo_url %}<img class="logo" src="{{ tenant.logo_url }}" alt="">{% endif %}
-  </div>
-  <div class="workshop">
-    <div class="name">{{ tenant.name }}</div>
-    {% if tenant.address %}<div>{{ tenant.address }}</div>{% endif %}
-    {% if tenant.phone %}<div>{{ tenant.phone }}</div>{% endif %}
-    {% if tenant.email %}<div>{{ tenant.email }}</div>{% endif %}
-    {% if tenant.business_registration_number %}<div>Reg. No: {{ tenant.business_registration_number }}</div>{% endif %}
-    {% if tenant.vat_registration_number %}<div>VAT No: {{ tenant.vat_registration_number }}</div>{% endif %}
-  </div>
-</div>
-
-<div class="meta">
-  <div>
-    <div class="number">{{ invoice.invoice_number }}</div>
-    <div class="badge {{ invoice.status.value }}">{{ invoice.status.value.replace('_', ' ') }}</div>
-  </div>
-  <div style="text-align: right; font-size: 9.5pt; line-height: 1.6;">
-    <div><strong>Issue date:</strong> {{ invoice.issue_date.strftime('%d %b %Y') }}</div>
-    <div><strong>Due date:</strong> {{ invoice.due_date.strftime('%d %b %Y') }}</div>
-  </div>
-</div>
-
-<div class="billto">
-  <div class="label">Bill to</div>
-  <div><strong>{{ customer.name }}</strong></div>
-  {% if customer.phone %}<div>{{ customer.phone }}</div>{% endif %}
-  {% if customer.address %}<div>{{ customer.address }}</div>{% endif %}
-  <div style="margin-top: 6px;">
-    {{ asset.label }}{% if asset.identifier %} &middot; {{ asset.identifier }}{% endif %}
-  </div>
-</div>
-
-<table class="items">
-  <thead>
-    <tr>
-      <th>Description</th>
-      <th class="num">Qty</th>
-      <th class="num">Unit price</th>
-      <th class="num">Amount</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for line in line_items %}
-    <tr>
-      <td>{{ line.description }}</td>
-      <td class="num">{{ '%g' % line.quantity }}</td>
-      <td class="num">{{ money(line.unit_price) }}</td>
-      <td class="num">{{ money(line.line_total) }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<table class="totals">
-  <tr>
-    <td>Subtotal</td>
-    <td class="num">{{ money(invoice.subtotal) }}</td>
-  </tr>
-  <tr>
-    <td>Tax ({{ percent(invoice.tax_rate) }})</td>
-    <td class="num">{{ money(invoice.tax_amount) }}</td>
-  </tr>
-  <tr class="grand">
-    <td>Total</td>
-    <td class="num">{{ money(invoice.total) }}</td>
-  </tr>
-</table>
-
-<div class="footer">
-  <div>Thank you for your business.</div>
-  <div class="generated">Generated by Torqbay</div>
-</div>
-
-</body>
-</html>
-```
-
-- [ ] **Step 5: Write the renderer**
-
-Create `backend/app/services/invoice_render.py`:
+Create `backend/app/services/invoice_pdf.py`:
 
 ```python
-from pathlib import Path
-
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from fpdf import FPDF
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset
@@ -2168,16 +2082,153 @@ from app.models.job import Job
 from app.models.tenant import Tenant
 from app.services.formatting import format_currency, format_percentage
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+# A4 content width with 16 mm side margins.
+_CONTENT_WIDTH = 178.0
+_COL_DESCRIPTION = 88.0
+_COL_QUANTITY = 20.0
+_COL_UNIT_PRICE = 35.0
+_COL_AMOUNT = 35.0
+_ROW_HEIGHT = 6.5
+# Leave room for the totals block and footer before breaking to a new page.
+_BOTTOM_LIMIT = 250.0
 
-_env = Environment(
-    loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-    autoescape=select_autoescape(["html"]),
-)
+
+def _header(pdf: FPDF, tenant: Tenant) -> None:
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 7, tenant.name, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "", 8.5)
+    for line in (
+        tenant.address,
+        tenant.phone,
+        tenant.email,
+        f"Reg. No: {tenant.business_registration_number}"
+        if tenant.business_registration_number
+        else None,
+        f"VAT No: {tenant.vat_registration_number}"
+        if tenant.vat_registration_number
+        else None,
+    ):
+        if line:
+            pdf.cell(0, 4.5, line, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(2)
+    pdf.set_draw_color(34, 34, 34)
+    pdf.set_line_width(0.5)
+    y = pdf.get_y()
+    pdf.line(pdf.l_margin, y, pdf.l_margin + _CONTENT_WIDTH, y)
+    pdf.ln(4)
 
 
-def render_invoice_html(db: Session, invoice: Invoice) -> str:
-    """Render an invoice to a complete, self-contained HTML document."""
+def _meta(pdf: FPDF, invoice: Invoice) -> None:
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(90, 8, invoice.invoice_number)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(
+        88, 4, f"Issue date: {invoice.issue_date.strftime('%d %b %Y')}",
+        align="R", new_x="LMARGIN", new_y="NEXT",
+    )
+    pdf.cell(90, 4, invoice.status.value.replace("_", " ").upper())
+    pdf.cell(
+        88, 4, f"Due date: {invoice.due_date.strftime('%d %b %Y')}",
+        align="R", new_x="LMARGIN", new_y="NEXT",
+    )
+    pdf.ln(4)
+
+
+def _bill_to(pdf: FPDF, customer: Customer, asset: Asset) -> None:
+    pdf.set_font("Helvetica", "", 7.5)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 4, "BILL TO", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(34, 34, 34)
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 5, customer.name, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "", 9)
+    for line in (customer.phone, customer.address):
+        if line:
+            pdf.cell(0, 4.5, line, new_x="LMARGIN", new_y="NEXT")
+
+    vehicle = asset.label
+    if asset.identifier:
+        vehicle = f"{vehicle} - {asset.identifier}"
+    pdf.cell(0, 5, vehicle, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+
+def _table_header(pdf: FPDF) -> None:
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.cell(_COL_DESCRIPTION, _ROW_HEIGHT, "Description", border="B")
+    pdf.cell(_COL_QUANTITY, _ROW_HEIGHT, "Qty", border="B", align="R")
+    pdf.cell(_COL_UNIT_PRICE, _ROW_HEIGHT, "Unit price", border="B", align="R")
+    pdf.cell(_COL_AMOUNT, _ROW_HEIGHT, "Amount", border="B", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+
+
+def _line_items(pdf: FPDF, lines: list[InvoiceLineItem], money) -> None:
+    _table_header(pdf)
+    for line in lines:
+        if pdf.get_y() > _BOTTOM_LIMIT:
+            pdf.add_page()
+            _table_header(pdf)
+        quantity = f"{line.quantity:g}"
+        pdf.cell(_COL_DESCRIPTION, _ROW_HEIGHT, line.description[:60], border="B")
+        pdf.cell(_COL_QUANTITY, _ROW_HEIGHT, quantity, border="B", align="R")
+        pdf.cell(_COL_UNIT_PRICE, _ROW_HEIGHT, money(line.unit_price), border="B", align="R")
+        pdf.cell(
+            _COL_AMOUNT, _ROW_HEIGHT, money(line.line_total), border="B",
+            align="R", new_x="LMARGIN", new_y="NEXT",
+        )
+
+
+def _totals(pdf: FPDF, invoice: Invoice, money) -> None:
+    pdf.ln(3)
+    label_width = _CONTENT_WIDTH - _COL_AMOUNT
+
+    pdf.set_font("Helvetica", "", 9.5)
+    pdf.cell(label_width, 5.5, "Subtotal", align="R")
+    pdf.cell(_COL_AMOUNT, 5.5, money(invoice.subtotal), align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.cell(label_width, 5.5, f"Tax ({format_percentage(invoice.tax_rate)})", align="R")
+    pdf.cell(_COL_AMOUNT, 5.5, money(invoice.tax_amount), align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(1)
+    y = pdf.get_y()
+    pdf.set_line_width(0.4)
+    pdf.line(pdf.l_margin + label_width, y, pdf.l_margin + _CONTENT_WIDTH, y)
+    pdf.ln(1.5)
+
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(label_width, 8, "Total", align="R")
+    pdf.cell(_COL_AMOUNT, 8, money(invoice.total), align="R", new_x="LMARGIN", new_y="NEXT")
+
+
+def _footer(pdf: FPDF) -> None:
+    pdf.ln(8)
+    pdf.set_draw_color(220, 220, 220)
+    pdf.set_line_width(0.2)
+    y = pdf.get_y()
+    pdf.line(pdf.l_margin, y, pdf.l_margin + _CONTENT_WIDTH, y)
+    pdf.ln(3)
+
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 4.5, "Thank you for your business.", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 7.5)
+    pdf.set_text_color(170, 170, 170)
+    pdf.cell(0, 4, "Generated by Torqbay", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(34, 34, 34)
+
+
+def build_invoice_pdf(db: Session, invoice: Invoice) -> bytes:
+    """Render an invoice to an A4 PDF.
+
+    Every element is positioned explicitly so output is byte-identical across
+    platforms - the same invoice must not look different depending on where it
+    was generated.
+    """
     tenant = db.query(Tenant).filter(Tenant.id == invoice.tenant_id).one()
     customer = (
         db.query(Customer)
@@ -2194,7 +2245,7 @@ def render_invoice_html(db: Session, invoice: Invoice) -> str:
         .filter(Asset.id == job.asset_id, Asset.tenant_id == invoice.tenant_id)
         .one()
     )
-    line_items = (
+    lines = (
         db.query(InvoiceLineItem)
         .filter(
             InvoiceLineItem.invoice_id == invoice.id,
@@ -2204,28 +2255,35 @@ def render_invoice_html(db: Session, invoice: Invoice) -> str:
         .all()
     )
 
-    template = _env.get_template("invoice/invoice.html")
-    return template.render(
-        invoice=invoice,
-        tenant=tenant,
-        customer=customer,
-        asset=asset,
-        line_items=line_items,
-        money=lambda amount: format_currency(amount, tenant.currency),
-        percent=format_percentage,
-    )
+    def money(amount: float) -> str:
+        return format_currency(amount, tenant.currency)
+
+    pdf = FPDF(format="A4", unit="mm")
+    pdf.set_auto_page_break(auto=False)
+    pdf.set_margins(16, 18, 16)
+    pdf.add_page()
+    pdf.set_text_color(34, 34, 34)
+
+    _header(pdf, tenant)
+    _meta(pdf, invoice)
+    _bill_to(pdf, customer, asset)
+    _line_items(pdf, lines, money)
+    _totals(pdf, invoice, money)
+    _footer(pdf)
+
+    return bytes(pdf.output())
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_render.py -v`
-Expected: PASS (5 tests)
+Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf_builder.py -v`
+Expected: PASS (6 tests)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/templates/ backend/app/services/invoice_render.py backend/requirements.txt backend/requirements-dev.txt backend/tests/test_invoice_render.py
-git commit -m "feat(invoicing): add invoice HTML template and render context"
+git add backend/app/services/invoice_pdf.py backend/requirements.txt backend/requirements-dev.txt backend/tests/test_invoice_pdf_builder.py
+git commit -m "feat(invoicing): build invoice PDFs with fpdf2"
 ```
 
 ---
@@ -2234,24 +2292,21 @@ git commit -m "feat(invoicing): add invoice HTML template and render context"
 
 **Files:**
 - Modify: `backend/app/api/v1/invoices.py`
-- Test: `backend/tests/test_invoice_pdf.py`
+- Test: `backend/tests/test_invoice_pdf_endpoint.py`
 
 **Interfaces:**
-- Consumes: `render_invoice_html`, `_get_invoice_or_404`
+- Consumes: `build_invoice_pdf`, `_get_invoice_or_404`
 - Produces: `GET /invoices/{invoice_id}/pdf`
 
-Returns `application/pdf` with a `Content-Disposition` filename of `<invoice_number>.pdf`. The PDF is rendered on each request — there is no stored file and no `pdf_url`, per the plan's design decisions.
+Returns `application/pdf` with a `Content-Disposition` filename of `<invoice_number>.pdf`. The PDF is rendered per request — there is no stored file and no `pdf_url` column, per the design decisions at the top of this plan. At 2.4 ms per render this is far cheaper than storing and invalidating files.
 
-**WeasyPrint is imported inside the handler, not at module scope.** If the system graphics libraries are missing on a dev machine, a module-scope import would break the entire app at startup, including every unrelated endpoint. A local import confines the failure to this one route.
+`fpdf2` is pure Python with no system dependencies, so unlike the original WeasyPrint approach it can be imported at module scope without risking application startup.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `backend/tests/test_invoice_pdf.py`:
+Create `backend/tests/test_invoice_pdf_endpoint.py`:
 
 ```python
-import pytest
-
-
 def _owner_token(client, platform_admin, email="owner-pdf@example.com", password="ownerpass123"):
     admin_login = client.post("/api/v1/admin/auth/login", json=platform_admin)
     admin_token = admin_login.json()["access_token"]
@@ -2289,8 +2344,6 @@ def _invoice(client, token):
 
 
 def test_pdf_endpoint_returns_a_pdf(client, platform_admin):
-    pytest.importorskip("weasyprint", reason="WeasyPrint needs system cairo/pango libraries")
-
     token = _owner_token(client, platform_admin)
     h = {"Authorization": f"Bearer {token}"}
     invoice = _invoice(client, token)
@@ -2301,6 +2354,18 @@ def test_pdf_endpoint_returns_a_pdf(client, platform_admin):
     assert response.headers["content-type"] == "application/pdf"
     assert invoice["invoice_number"] in response.headers["content-disposition"]
     assert response.content.startswith(b"%PDF-")
+
+
+def test_pdf_is_deterministic_across_requests(client, platform_admin):
+    """The same invoice must produce the same document every time."""
+    token = _owner_token(client, platform_admin, email="owner-pdf-det@example.com")
+    h = {"Authorization": f"Bearer {token}"}
+    invoice = _invoice(client, token)
+
+    first = client.get(f"/api/v1/invoices/{invoice['id']}/pdf", headers=h).content
+    second = client.get(f"/api/v1/invoices/{invoice['id']}/pdf", headers=h).content
+
+    assert len(first) == len(second)
 
 
 def test_pdf_for_another_tenants_invoice_returns_404(client, platform_admin):
@@ -2324,16 +2389,14 @@ def test_pdf_requires_authentication(client, platform_admin):
     assert response.status_code == 401
 ```
 
-Note the tenant-isolation and auth tests deliberately do NOT skip when WeasyPrint is absent — they assert 404/401, which is decided before any rendering happens. Only the test that needs a real PDF skips.
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf.py -v`
-Expected: FAIL — route does not exist (or SKIP for the first test if WeasyPrint is unavailable, with the other two failing)
+Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf_endpoint.py -v`
+Expected: FAIL — route does not exist
 
 - [ ] **Step 3: Add the endpoint**
 
-Add `Response` to the existing `fastapi` import in `backend/app/api/v1/invoices.py`, add `from app.services.invoice_render import render_invoice_html`, then append:
+Add `Response` to the existing `fastapi` import in `backend/app/api/v1/invoices.py`, add `from app.services.invoice_pdf import build_invoice_pdf`, then append:
 
 ```python
 @router.get("/invoices/{invoice_id}/pdf")
@@ -2343,33 +2406,23 @@ def get_invoice_pdf(
     db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     invoice = _get_invoice_or_404(db, current_user.tenant_id, invoice_id)
-
-    # Imported here, not at module scope: WeasyPrint needs system graphics
-    # libraries, and a missing one must break only this route rather than
-    # preventing the whole application from starting.
-    from weasyprint import HTML
-
-    html = render_invoice_html(db, invoice)
-    pdf = HTML(string=html).write_pdf()
-
+    pdf = build_invoice_pdf(db, invoice)
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{invoice.invoice_number}.pdf"'
-        },
+        headers={"Content-Disposition": f'inline; filename="{invoice.invoice_number}.pdf"'},
     )
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf.py -v`
-Expected: PASS (3 tests), or 2 passed + 1 skipped if WeasyPrint is not installable locally
+Run: `cd backend && .venv/bin/python -m pytest tests/test_invoice_pdf_endpoint.py -v`
+Expected: PASS (4 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/app/api/v1/invoices.py backend/tests/test_invoice_pdf.py
+git add backend/app/api/v1/invoices.py backend/tests/test_invoice_pdf_endpoint.py
 git commit -m "feat(invoicing): add invoice PDF endpoint"
 ```
 
@@ -2924,7 +2977,7 @@ git commit -m "test(invoicing): cover the full job-to-settled-invoice lifecycle"
 
 ## Deployment notes
 
-`weasyprint` and `jinja2` are added to `requirements.txt`, so the CI/CD deploy installs them. The server's system libraries were verified before this plan was written — `libcairo.so.2`, `libpango-1.0.so.0`, and `libgdk_pixbuf-2.0.so.0` are all present on the host, and `weasyprint==69.0` resolves cleanly there.
+`fpdf2` is added to `requirements.txt`, so the CI/CD deploy installs it. It is pure Python with no system dependencies.
 
 After merge, CI/CD runs `alembic upgrade head` against production MySQL. All three new tables (`invoices`, `invoice_line_items`, `payments`) are additive — no existing table is altered — so the migration is safe against live data.
 
