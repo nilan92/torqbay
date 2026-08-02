@@ -17,7 +17,7 @@ from app.models.job_part import JobPart
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobListResponse, JobRead, JobStatusUpdate, JobUpdate
 from app.schemas.job_labor_entry import JobLaborEntryCreate, JobLaborEntryRead
-from app.schemas.job_part import JobPartCreate, JobPartRead
+from app.schemas.job_part import JobPartCreate, JobPartListResponse, JobPartRead
 
 router = APIRouter()
 
@@ -238,3 +238,20 @@ def create_job_part(
     db.commit()
     db.refresh(part)
     return part
+
+
+@router.get("/jobs/{job_id}/parts", response_model=JobPartListResponse)
+def list_job_parts(
+    job_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> JobPartListResponse:
+    _get_job_or_404(db, current_user, job_id)
+    query = db.query(JobPart).filter(
+        JobPart.tenant_id == current_user.tenant_id, JobPart.job_id == job_id
+    )
+    total = query.count()
+    parts = query.offset((page - 1) * page_size).limit(page_size).all()
+    return JobPartListResponse(items=parts, total=total, page=page, page_size=page_size)
