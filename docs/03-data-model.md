@@ -156,7 +156,7 @@ stock quantity — no other code path should mutate it directly.
 | issue_date, due_date | |
 | subtotal, tax_rate, tax_amount, total | |
 | status | `draft` / `sent` / `partially_paid` / `paid` / `overdue` / `cancelled` |
-| pdf_url | generated file, see [invoice template doc](06-invoice-template.md) |
+| *(no pdf_url)* | PDFs are generated on demand, not stored — see [invoice template doc](06-invoice-template.md) |
 
 ### `invoice_line_items`
 
@@ -244,7 +244,7 @@ system. Payslip detail stays in the payroll tables for
 per-employee/compliance records.
 
 **Not in Phase 1**: payslip PDF export. Payslip data is viewable in-app;
-add a printable PDF (reusing the same WeasyPrint approach as invoices)
+add a printable PDF (reusing the same fpdf2 approach as invoices)
 only if staff actually need a physical/digital payslip handed to them.
 
 ## Tenant-scoped: recurring expenses

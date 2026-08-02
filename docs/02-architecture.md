@@ -9,8 +9,8 @@
 | ORM | SQLAlchemy 2.0 + Alembic (migrations) | Standard, explicit, works well with FastAPI |
 | Database | **MySQL 8** | User requirement |
 | Auth | JWT (access + refresh tokens) | Stateless, works well with mobile clients |
-| PDF generation | **WeasyPrint** (HTML/CSS → PDF) | Lets us design the invoice as an HTML/CSS template (easy to make "nice") rather than hand-coding PDF drawing calls |
-| File storage | Local disk (dev) → S3-compatible object storage (prod) | Logos, generated invoice PDFs |
+| PDF generation | **fpdf2** | WeasyPrint was the original choice but *cannot run on the production host*: system `libpango` is 1.42.3 and WeasyPrint needs >= 1.44, with no root access to upgrade. fpdf2 is pure Python, needs no system libraries, and benchmarked at 2.4 ms per invoice on that host — which matters given the account's hard 6-worker LSAPI cap. |
+| File storage | None yet | Invoice PDFs are generated on demand rather than stored (2.4 ms per render, so storing them costs more than it saves). Logo hosting is still open — revisit when tenant branding upload is built. |
 | Background jobs | FastAPI `BackgroundTasks` initially; upgrade to a queue (e.g. Celery/RQ) only if volume demands it | YAGNI — a real task queue is unnecessary until notification/PDF volume is high |
 
 ## Multi-tenancy: shared database, row-level isolation
@@ -67,8 +67,12 @@ a redesign.
 - **State/data fetching**: React Query (TanStack Query) for server state —
   handles caching, refetch, and offline-ish retry without hand-rolled
   state management.
-- **Styling**: NativeWind (Tailwind for React Native) — see
-  `expo-tailwind-setup` skill already available in this environment.
+- **Styling**: inline styles over a small token file (`src/theme/`), with the
+  `Color` API from `expo-router` for native semantic colors so light/dark and
+  accessibility adapt automatically. NativeWind was the original choice and was
+  reversed: NativeWind v5 requires preview and nightly dependencies plus four
+  config files, which is the wrong trade for a foundation that needs to be
+  boring and reliable. Revisit once the app is in real use.
 
 ## Request flow example (create a job)
 
@@ -85,4 +89,4 @@ a redesign.
 - **Dev**: local MySQL + local FastAPI + Expo Go / dev client
 - **Staging/Prod**: managed MySQL (e.g. PlanetScale, RDS, or a Sri Lanka/
   Singapore-region host for latency), FastAPI behind a reverse proxy,
-  object storage for PDFs/logos, Expo EAS Build for app store releases
+  storage for logos if tenant branding needs it, Expo EAS Build for app store releases

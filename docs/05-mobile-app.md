@@ -1,11 +1,14 @@
 # Mobile App (Expo)
 
-Built with Expo + Expo Router (file-based navigation), NativeWind for
-styling, React Query for server state. See `expo-native-ui` and
-`expo-tailwind-setup` skills in this environment when implementation
-starts, plus the `frontend-design` skill for aesthetic direction —
-invoke all three when work reaches the mobile sub-plans (6-7), not just
-`expo-native-ui` in isolation.
+Built with Expo + Expo Router (file-based navigation), inline styles over a
+small token file for styling, React Query for server state. Invoke the
+`expo-native-ui` and `frontend-design` skills when working on mobile screens.
+
+**Styling note:** NativeWind was the original plan; it was reversed during the
+mobile foundation sub-plan because NativeWind v5 needs preview/nightly
+dependencies plus four config files. Styling is now inline styles plus the
+`Color` API from `expo-router` for native semantic colors, with a small fixed
+palette for brand and job-status colors. Tokens live in `mobile/src/theme/`.
 
 ## Design principle: straightforward AND fun — not a chore
 
