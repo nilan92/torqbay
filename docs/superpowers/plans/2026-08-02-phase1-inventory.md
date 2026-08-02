@@ -102,10 +102,12 @@ class Supplier(Base, TenantScopedMixin):
 
 - [ ] **Step 4: Register the model so Alembic sees it**
 
-Add to `backend/app/models/__init__.py`, keeping the existing import style in that file:
+Model registration happens in `backend/alembic/env.py`, which imports every model module explicitly. `backend/app/models/__init__.py` is intentionally empty — leave it that way.
+
+Add `supplier` to the existing enumerated import on line 8 of `backend/alembic/env.py`, keeping alphabetical order:
 
 ```python
-from app.models.supplier import Supplier  # noqa: F401
+from app.models import asset, customer, job, job_labor_entry, platform_admin, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -518,10 +520,10 @@ class InventoryItem(Base, TenantScopedMixin):
 
 - [ ] **Step 4: Register the model**
 
-Add to `backend/app/models/__init__.py`:
+Add `inventory_item` to the enumerated import on line 8 of `backend/alembic/env.py`, keeping alphabetical order. Leave `backend/app/models/__init__.py` empty — it is not the registration point.
 
 ```python
-from app.models.inventory_item import InventoryItem  # noqa: F401
+from app.models import asset, customer, inventory_item, job, job_labor_entry, platform_admin, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -1111,10 +1113,10 @@ class JobPart(Base, TenantScopedMixin):
 
 - [ ] **Step 4: Register the model**
 
-Add to `backend/app/models/__init__.py`:
+Add `job_part` to the enumerated import on line 8 of `backend/alembic/env.py`, keeping alphabetical order. Leave `backend/app/models/__init__.py` empty — it is not the registration point.
 
 ```python
-from app.models.job_part import JobPart  # noqa: F401
+from app.models import asset, customer, inventory_item, job, job_labor_entry, job_part, platform_admin, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -1711,11 +1713,10 @@ class PurchaseOrderItem(Base, TenantScopedMixin):
 
 - [ ] **Step 4: Register the models**
 
-Add to `backend/app/models/__init__.py`:
+Add `purchase_order` and `purchase_order_item` to the enumerated import on line 8 of `backend/alembic/env.py`, keeping alphabetical order. Leave `backend/app/models/__init__.py` empty — it is not the registration point.
 
 ```python
-from app.models.purchase_order import PurchaseOrder  # noqa: F401
-from app.models.purchase_order_item import PurchaseOrderItem  # noqa: F401
+from app.models import asset, customer, inventory_item, job, job_labor_entry, job_part, platform_admin, purchase_order, purchase_order_item, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
