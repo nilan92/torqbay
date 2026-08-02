@@ -2552,6 +2552,32 @@ def test_consumption_drives_an_item_into_the_low_stock_list(client, platform_adm
     assert low["items"][0]["id"] == item_id
 
 
+def test_using_exactly_the_quantity_on_hand_is_not_overdrawn(client, platform_admin):
+    """Boundary case: available == quantity.
+
+    A Task 7 review proved this is uncovered — the mutation
+    `overdrawn = item.quantity_on_hand <= 0` passes every other test in the
+    suite and is wrong only here, so without this test that regression ships
+    silently.
+    """
+    token = _tenant_owner(client, platform_admin, "owner-invariant-exact@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    item_id = _item(client, token, quantity_on_hand=5.0)
+    job_id = _job(client, token)
+
+    response = client.post(
+        f"/api/v1/jobs/{job_id}/parts",
+        json={"inventory_item_id": item_id, "quantity": 5.0},
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["shortfall"] == 0.0
+    assert body["overdrawn"] is False
+    assert _on_hand(client, token, item_id) == 0.0
+
+
 def test_technician_can_read_inventory_but_not_write_it(client, platform_admin):
     owner_token = _tenant_owner(client, platform_admin, "owner-invariant-role@example.com")
     tech_token = _technician_token(client, owner_token)
@@ -2579,7 +2605,7 @@ def test_technician_can_read_inventory_but_not_write_it(client, platform_admin):
 - [ ] **Step 2: Run the tests**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_inventory_stock_invariant.py -v`
-Expected: PASS (3 tests)
+Expected: PASS (4 tests)
 
 - [ ] **Step 3: Run the whole suite**
 
