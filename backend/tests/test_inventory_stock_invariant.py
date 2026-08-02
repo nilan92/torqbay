@@ -165,3 +165,6 @@ def test_technician_can_read_inventory_but_not_write_it(client, platform_admin):
     assert patch.status_code == 403
 
     assert client.post("/api/v1/suppliers", json={"name": "Nope"}, headers=tech_headers).status_code == 403
+
+    assert client.get("/api/v1/suppliers", headers=tech_headers).status_code == 200
+    assert client.get("/api/v1/purchase-orders", headers=tech_headers).status_code == 200

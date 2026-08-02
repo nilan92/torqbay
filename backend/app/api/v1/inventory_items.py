@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.customers import STAFF_ROLES
-from app.api.v1.suppliers import _get_supplier_or_404
+from app.api.v1.suppliers import INVENTORY_READ_ROLES, _get_supplier_or_404
 from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.inventory_item import InventoryItem
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.inventory_item import (
     InventoryItemCreate,
     InventoryItemListResponse,
@@ -17,8 +17,6 @@ from app.schemas.inventory_item import (
 )
 
 router = APIRouter()
-
-INVENTORY_READ_ROLES = (*STAFF_ROLES, UserRole.technician)
 
 
 def _get_item_or_404(db: Session, tenant_id: str, item_id: str) -> InventoryItem:

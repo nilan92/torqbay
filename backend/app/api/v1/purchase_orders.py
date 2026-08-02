@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.customers import STAFF_ROLES
-from app.api.v1.inventory_items import INVENTORY_READ_ROLES, _get_item_or_404
-from app.api.v1.suppliers import _get_supplier_or_404
+from app.api.v1.inventory_items import _get_item_or_404
+from app.api.v1.suppliers import INVENTORY_READ_ROLES, _get_supplier_or_404
 from app.core.dependencies import require_role
 from app.db.base import _now
 from app.db.session import get_db

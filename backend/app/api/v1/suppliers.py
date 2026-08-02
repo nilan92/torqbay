@@ -7,7 +7,7 @@ from app.api.v1.customers import STAFF_ROLES
 from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.supplier import Supplier
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.supplier import (
     SupplierCreate,
     SupplierListResponse,
@@ -16,6 +16,8 @@ from app.schemas.supplier import (
 )
 
 router = APIRouter()
+
+INVENTORY_READ_ROLES = (*STAFF_ROLES, UserRole.technician)
 
 
 def _get_supplier_or_404(db: Session, tenant_id: str, supplier_id: str) -> Supplier:
@@ -44,7 +46,7 @@ def create_supplier(
 
 @router.get("/suppliers", response_model=SupplierListResponse)
 def list_suppliers(
-    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    current_user: Annotated[User, Depends(require_role(*INVENTORY_READ_ROLES))],
     db: Annotated[Session, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -58,7 +60,7 @@ def list_suppliers(
 @router.get("/suppliers/{supplier_id}", response_model=SupplierRead)
 def get_supplier(
     supplier_id: str,
-    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    current_user: Annotated[User, Depends(require_role(*INVENTORY_READ_ROLES))],
     db: Annotated[Session, Depends(get_db)],
 ) -> Supplier:
     return _get_supplier_or_404(db, current_user.tenant_id, supplier_id)
