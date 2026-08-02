@@ -67,8 +67,11 @@ def list_inventory_items(
     db: Annotated[Session, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    low_stock: bool = Query(False),
 ) -> InventoryItemListResponse:
     query = db.query(InventoryItem).filter(InventoryItem.tenant_id == current_user.tenant_id)
+    if low_stock:
+        query = query.filter(InventoryItem.quantity_on_hand <= InventoryItem.reorder_threshold)
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
     return InventoryItemListResponse(items=items, total=total, page=page, page_size=page_size)
