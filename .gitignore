@@ -29,3 +29,6 @@ venv/
 # Editor
 .vscode/
 .idea/
+
+# Claude Code worktrees / local session state
+.claude/
