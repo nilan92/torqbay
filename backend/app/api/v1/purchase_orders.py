@@ -7,8 +7,10 @@ from app.api.v1.customers import STAFF_ROLES
 from app.api.v1.inventory_items import INVENTORY_READ_ROLES, _get_item_or_404
 from app.api.v1.suppliers import _get_supplier_or_404
 from app.core.dependencies import require_role
+from app.db.base import _now
 from app.db.session import get_db
-from app.models.purchase_order import PurchaseOrder
+from app.models.inventory_item import InventoryItem
+from app.models.purchase_order import PurchaseOrder, PurchaseOrderStatus
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.user import User
 from app.schemas.purchase_order import (
@@ -81,3 +83,43 @@ def get_purchase_order(
     db: Annotated[Session, Depends(get_db)],
 ) -> PurchaseOrder:
     return _get_po_or_404(db, current_user.tenant_id, po_id)
+
+
+@router.patch("/purchase-orders/{po_id}/receive", response_model=PurchaseOrderRead)
+def receive_purchase_order(
+    po_id: str,
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> PurchaseOrder:
+    po = _get_po_or_404(db, current_user.tenant_id, po_id)
+    if po.status == PurchaseOrderStatus.received:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Purchase order has already been received"
+        )
+
+    lines = (
+        db.query(PurchaseOrderItem)
+        .filter(
+            PurchaseOrderItem.purchase_order_id == po.id,
+            PurchaseOrderItem.tenant_id == current_user.tenant_id,
+        )
+        .all()
+    )
+
+    for line in lines:
+        item = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.id == line.inventory_item_id,
+                InventoryItem.tenant_id == current_user.tenant_id,
+            )
+            .with_for_update()
+            .one()
+        )
+        item.quantity_on_hand = item.quantity_on_hand + line.quantity
+
+    po.status = PurchaseOrderStatus.received
+    po.received_at = _now()
+    db.commit()
+    db.refresh(po)
+    return po
