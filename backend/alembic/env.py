@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import asset, customer, inventory_item, job, job_labor_entry, job_part, platform_admin, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
+from app.models import asset, customer, inventory_item, job, job_labor_entry, job_part, platform_admin, purchase_order, purchase_order_item, supplier, tenant, user  # noqa: F401 -- registers models on Base.metadata
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
