@@ -94,6 +94,26 @@ def test_creating_item_with_supplier_from_another_tenant_returns_404(client, pla
     assert response.status_code == 404
 
 
+def test_negative_numeric_fields_are_rejected(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-item-negative@example.com")
+
+    for field in ("unit_cost", "unit_price", "quantity_on_hand", "reorder_threshold"):
+        response = _create_item(client, token, sku=f"NEG-{field}", **{field: -1.0})
+        assert response.status_code == 422, f"{field} must reject negative values"
+
+
+def test_patch_rejects_negative_numeric_fields(client, platform_admin):
+    token = _owner_token(client, platform_admin, email="owner-item-negative-patch@example.com")
+    item_id = _create_item(client, token).json()["id"]
+
+    response = client.patch(
+        f"/api/v1/inventory-items/{item_id}",
+        json={"unit_price": -5.0},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+
+
 def test_item_from_another_tenant_returns_404(client, platform_admin):
     token_a = _owner_token(client, platform_admin, email="owner-item-iso-a@example.com")
     token_b = _owner_token(client, platform_admin, email="owner-item-iso-b@example.com")
