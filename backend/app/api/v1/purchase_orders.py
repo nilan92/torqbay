@@ -23,12 +23,15 @@ from app.schemas.purchase_order import (
 router = APIRouter()
 
 
-def _get_po_or_404(db: Session, tenant_id: str, po_id: str) -> PurchaseOrder:
-    po = (
-        db.query(PurchaseOrder)
-        .filter(PurchaseOrder.id == po_id, PurchaseOrder.tenant_id == tenant_id)
-        .first()
+def _get_po_or_404(
+    db: Session, tenant_id: str, po_id: str, *, lock: bool = False
+) -> PurchaseOrder:
+    query = db.query(PurchaseOrder).filter(
+        PurchaseOrder.id == po_id, PurchaseOrder.tenant_id == tenant_id
     )
+    if lock:
+        query = query.with_for_update()
+    po = query.first()
     if po is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase order not found")
     return po
@@ -92,7 +95,7 @@ def receive_purchase_order(
     current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
     db: Annotated[Session, Depends(get_db)],
 ) -> PurchaseOrder:
-    po = _get_po_or_404(db, current_user.tenant_id, po_id)
+    po = _get_po_or_404(db, current_user.tenant_id, po_id, lock=True)
     if po.status == PurchaseOrderStatus.received:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Purchase order has already been received"

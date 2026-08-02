@@ -91,6 +91,36 @@ def test_receiving_twice_returns_409_and_does_not_double_increment(client, platf
     assert _on_hand(client, token, item_id) == 11.0
 
 
+def test_receive_locks_the_purchase_order_row(client, platform_admin, monkeypatch):
+    """The double-receive guard must read the PO under a row lock.
+
+    Without it, two concurrent receives both pass the status check before
+    either commits, and stock is incremented twice. Regression test for a
+    Critical finding in the Phase 1 Inventory final review.
+    """
+    import app.api.v1.purchase_orders as po_module
+
+    calls = []
+    original = po_module._get_po_or_404
+
+    def spy(db, tenant_id, po_id, *, lock=False):
+        calls.append(lock)
+        return original(db, tenant_id, po_id, lock=lock)
+
+    monkeypatch.setattr(po_module, "_get_po_or_404", spy)
+
+    token = _owner_token(client, platform_admin, email="owner-receive-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    supplier_id = _supplier(client, token)
+    item_id = _item(client, token, quantity_on_hand=0.0)
+    po_id = _po(client, token, supplier_id, [{"inventory_item_id": item_id, "quantity": 3.0, "unit_cost": 10.0}])
+
+    calls.clear()
+    assert client.patch(f"/api/v1/purchase-orders/{po_id}/receive", headers=headers).status_code == 200
+
+    assert calls == [True], f"receive must take the row lock, got {calls}"
+
+
 def test_receiving_another_tenants_purchase_order_returns_404(client, platform_admin):
     token_a = _owner_token(client, platform_admin, email="owner-receive-a@example.com")
     token_b = _owner_token(client, platform_admin, email="owner-receive-b@example.com")
