@@ -27,7 +27,7 @@
 
 **Line items are snapshots, not references.** When an invoice is created, each labor entry and job part is copied into an `invoice_line_items` row with its own description, quantity, and unit price. Changing a technician's hourly rate or an inventory item's price afterwards must never alter an invoice a customer already holds.
 
-**Invoicing requires closed labor entries.** A `JobLaborEntry` with `end_time IS NULL` is still running and has no billable duration. Invoicing a job with any open entry returns 400 rather than silently dropping that time — unbilled labor is a money bug.
+**Labour is billed flat, not by the hour.** Sri Lankan workshops pay technicians a monthly salary and bill the customer one labour charge per job, so `jobs.labor_cost` is the whole labour story on an invoice. `job_labor_entries` exist to answer "how long did this take and who did it" — a utilisation question — and are never read when building an invoice. A shop that itemises labour ("brake job 3,500, oil change 1,200") can add extra labour lines to the draft invoice via `POST /invoices/{id}/line-items`.
 
 ---
 
@@ -620,8 +620,8 @@ git commit -m "feat(invoicing): add tenant-scoped sequential invoice numbering"
 
 **Business rules, all enforced here:**
 - The job must be `done`. Any other status → 400. An `open` or `in_progress` job is not finished; an `invoiced` or `paid` job already has an invoice.
-- Every `JobLaborEntry` on the job must have a non-null `end_time`. An open entry → 400, because its duration is unknown and silently dropping it would under-bill.
-- Labor lines: `hours = (end_time - start_time).total_seconds() / 3600`, `line_total = hours * hourly_rate`.
+- Labour is a **single line** taken from `jobs.labor_cost`, the flat charge set on the job. There is no hours × rate calculation: technicians are salaried and workshops bill one labour amount per job. A job with `labor_cost = 0` gets no labour line.
+- `job_labor_entries` are **not** consulted when invoicing. They track time for utilisation insight, not money, so an open (unstopped) timer does not block invoicing.
 - Part lines: `line_total = quantity * unit_price_at_time`. Use the **snapshot** price on `JobPart`, never the item's current price.
 - `tax_rate` comes from `tenants.default_tax_rate` at creation time and is stored on the invoice, so later tenant tax changes don't alter issued invoices.
 - Creating the invoice moves the job to `invoiced`. This is the only path to that status.
@@ -681,12 +681,13 @@ def _complete(client, token, job_id):
     client.patch(f"/api/v1/jobs/{job_id}/status", json={"status": "done"}, headers=h)
 
 
-def _add_labor(client, token, job_id, technician_id, hours=2.0, rate=1500.0, close=True):
+def _add_labor(client, token, job_id, technician_id, hours=2.0, close=True):
+    """Record tracked time. Deliberately carries no rate — labour is billed
+    from the job's flat charge, not from these entries."""
     start = datetime(2026, 8, 2, 9, 0, tzinfo=timezone.utc)
     payload = {
         "technician_id": technician_id,
         "start_time": start.isoformat(),
-        "hourly_rate": rate,
     }
     if close:
         payload["end_time"] = (start + timedelta(hours=hours)).isoformat()
@@ -721,10 +722,9 @@ def _add_part(client, token, job_id, quantity=2.0, unit_price=4000.0):
 def test_invoice_totals_labor_and_parts(client, platform_admin):
     token = _owner_token(client, platform_admin)
     h = {"Authorization": f"Bearer {token}"}
-    tech_id = _technician_id(client, token)
     job_id = _job(client, token)
-    _add_labor(client, token, job_id, tech_id, hours=2.0, rate=1500.0)   # 3000
-    _add_part(client, token, job_id, quantity=2.0, unit_price=4000.0)    # 8000
+    client.patch(f"/api/v1/jobs/{job_id}", json={"labor_cost": 3000.0}, headers=h)  # 3000
+    _add_part(client, token, job_id, quantity=2.0, unit_price=4000.0)               # 8000
     _complete(client, token, job_id)
 
     response = client.post(f"/api/v1/jobs/{job_id}/invoice", json={}, headers=h)
@@ -753,9 +753,8 @@ def test_invoicing_moves_the_job_to_invoiced(client, platform_admin):
 def test_tax_rate_is_applied_and_snapshotted(client, platform_admin):
     token = _owner_token(client, platform_admin, email="owner-inv-tax@example.com")
     h = {"Authorization": f"Bearer {token}"}
-    tech_id = _technician_id(client, token, email="tech-inv-tax@example.com")
     job_id = _job(client, token)
-    _add_labor(client, token, job_id, tech_id, hours=2.0, rate=1000.0)  # 2000
+    client.patch(f"/api/v1/jobs/{job_id}", json={"labor_cost": 2000.0}, headers=h)  # 2000
     _complete(client, token, job_id)
 
     response = client.post(f"/api/v1/jobs/{job_id}/invoice", json={"tax_rate": 0.18}, headers=h)
@@ -787,20 +786,6 @@ def test_cannot_invoice_twice(client, platform_admin):
     second = client.post(f"/api/v1/jobs/{job_id}/invoice", json={}, headers=h)
 
     assert second.status_code == 400
-
-
-def test_open_labor_entry_blocks_invoicing(client, platform_admin):
-    token = _owner_token(client, platform_admin, email="owner-inv-open-labor@example.com")
-    h = {"Authorization": f"Bearer {token}"}
-    tech_id = _technician_id(client, token, email="tech-inv-open@example.com")
-    job_id = _job(client, token)
-    _add_labor(client, token, job_id, tech_id, close=False)
-    _complete(client, token, job_id)
-
-    response = client.post(f"/api/v1/jobs/{job_id}/invoice", json={}, headers=h)
-
-    assert response.status_code == 400
-    assert "labor" in response.json()["detail"].lower()
 
 
 def test_part_price_change_does_not_alter_the_invoice(client, platform_admin):
@@ -938,24 +923,17 @@ def _get_invoice_or_404(db: Session, tenant_id: str, invoice_id: str) -> Invoice
     return invoice
 
 
-def _build_labor_lines(db: Session, tenant_id: str, job_id: str) -> list[tuple[str, float, float]]:
-    """Return (description, quantity_hours, unit_price) per labor entry."""
-    entries = (
-        db.query(JobLaborEntry)
-        .filter(JobLaborEntry.tenant_id == tenant_id, JobLaborEntry.job_id == job_id)
-        .all()
-    )
-    if any(entry.end_time is None for entry in entries):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot invoice: the job has an open labor entry with no end time",
-        )
+def _labor_line(job: Job) -> tuple[str, float, float] | None:
+    """The job's flat labour charge, as a single line.
 
-    lines = []
-    for entry in entries:
-        hours = (entry.end_time - entry.start_time).total_seconds() / 3600
-        lines.append((f"Labor: {hours:.2f} h", hours, entry.hourly_rate))
-    return lines
+    Sri Lankan workshops bill labour as one amount per job and pay technicians
+    a monthly salary, so there is no hours x rate to compute. Time recorded in
+    job_labor_entries is for utilisation insight and never reaches an invoice.
+    A job with no labour charge produces no labour line at all.
+    """
+    if not job.labor_cost:
+        return None
+    return ("Labour", 1.0, job.labor_cost)
 
 
 def _build_part_lines(db: Session, tenant_id: str, job_id: str) -> list[tuple[str, float, float]]:
@@ -988,7 +966,7 @@ def create_invoice(
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).one()
     tax_rate = payload.tax_rate if payload.tax_rate is not None else tenant.default_tax_rate
 
-    labor = _build_labor_lines(db, current_user.tenant_id, job_id)
+    labor_line = _labor_line(job)
     parts = _build_part_lines(db, current_user.tenant_id, job_id)
 
     issue_date = _now().date()
@@ -1008,7 +986,7 @@ def create_invoice(
     db.flush()
 
     subtotal = 0.0
-    for description, quantity, unit_price in labor:
+    for description, quantity, unit_price in ([labor_line] if labor_line else []):
         line_total = quantity * unit_price
         subtotal += line_total
         db.add(
@@ -2840,13 +2818,16 @@ def test_full_job_to_settled_invoice_lifecycle(client, platform_admin):
         headers=h,
     ).json()["id"]
 
+    # Time is tracked for utilisation, and deliberately does NOT affect the
+    # invoice — labour is billed from the job's flat charge.
     start = datetime(2026, 8, 2, 9, 0, tzinfo=timezone.utc)
     client.post(
         f"/api/v1/jobs/{job_id}/labor-entries",
         json={"technician_id": tech_id, "start_time": start.isoformat(),
-              "end_time": (start + timedelta(hours=3)).isoformat(), "hourly_rate": 1000.0},
+              "end_time": (start + timedelta(hours=3)).isoformat()},
         headers=h,
     )
+    client.patch(f"/api/v1/jobs/{job_id}", json={"labor_cost": 3000.0}, headers=h)
     client.post(
         f"/api/v1/jobs/{job_id}/parts",
         json={"inventory_item_id": item_id, "quantity": 2.0},
@@ -2856,7 +2837,8 @@ def test_full_job_to_settled_invoice_lifecycle(client, platform_admin):
     client.patch(f"/api/v1/jobs/{job_id}/status", json={"status": "in_progress"}, headers=h)
     client.patch(f"/api/v1/jobs/{job_id}/status", json={"status": "done"}, headers=h)
 
-    # 3h * 1000 = 3000 labor, 2 * 4000 = 8000 parts, subtotal 11000, tax 10% = 1100
+    # 3000 flat labour + 2 * 4000 = 8000 parts, subtotal 11000, tax 10% = 1100.
+    # The 3 hours tracked above must NOT appear in the total.
     invoice = client.post(f"/api/v1/jobs/{job_id}/invoice", json={"tax_rate": 0.1}, headers=h).json()
     assert invoice["subtotal"] == 11000.0
     assert invoice["tax_amount"] == 1100.0
