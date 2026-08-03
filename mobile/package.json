@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
     "expo": "~57.0.9",
     "expo-constants": "~57.0.8",
+    "expo-image": "~57.0.1",
     "expo-linking": "~57.0.4",
     "expo-router": "~57.0.9",
     "expo-secure-store": "~57.0.1",
