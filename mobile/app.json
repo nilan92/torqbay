@@ -1,14 +1,16 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Torqbay",
+    "slug": "torqbay",
     "version": "1.0.0",
     "scheme": "torqbay",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nilan92.torqbay",
+      "appleTeamId": "MUVALZ9LK6"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +19,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.nilan92.torqbay"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -25,7 +28,8 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-image"
+      "expo-image",
+      "expo-secure-store"
     ]
   }
 }
