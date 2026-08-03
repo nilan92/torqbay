@@ -1,16 +1,46 @@
 # Invoice Template
 
-Generated server-side with **WeasyPrint** (renders an HTML/CSS template to
-PDF) at A4 size, triggered by `POST /jobs/{id}/invoice`. One Jinja2
-template file: `app/templates/invoice/invoice.html`.
+Generated server-side with **fpdf2** at A4 size, built by
+`app/services/invoice_pdf.py` and served by `GET /invoices/{id}/pdf`.
 
-## Why HTML/CSS instead of a PDF-drawing library
+## Why fpdf2, and why not WeasyPrint
 
-WeasyPrint takes a normal HTML+CSS document and rasterizes it to PDF, so
-"make it look nice" is a CSS/layout problem (something any web-capable
-dev can do quickly) instead of manually placing text boxes and lines with
-a low-level library like ReportLab. `@page { size: A4; margin: ... }`
-handles the page format directly.
+WeasyPrint was the original choice — writing the invoice as HTML/CSS is far
+pleasanter than positioning text by coordinate. **It cannot run on the
+production host.** WeasyPrint needs `libpango` >= 1.44 for
+`pango_context_set_round_glyph_positions`; the server has 1.42.3 (build dated
+2021) and the account has no root access to upgrade it. Verified by installing
+WeasyPrint on the server and attempting a render:
+
+```
+AttributeError: function/symbol 'pango_context_set_round_glyph_positions'
+not found in library 'libpango-1.0.so.0'
+```
+
+fpdf2 is pure Python with no system dependencies, so it has no such exposure.
+Benchmarked on the same host: **2.4 ms per invoice, 34 MB resident**. That
+speed matters — the account has a hard `LSAPI_CHILDREN` cap of 6 workers, so a
+slow render blocks a worker that could be answering other requests.
+
+The cost is that layout is expressed as coordinates rather than CSS. For a
+document that must be *precise* and byte-identical regardless of where it was
+generated, that is an acceptable trade.
+
+## Why the server renders it, not the app
+
+`expo-print` could produce a PDF on the device, and it would be lighter on the
+server. Two reasons it doesn't:
+
+1. **Phase 4 sends invoices over WhatsApp/SMS/email**, on a trigger or a
+   schedule, with no phone involved. The server has to be able to produce the
+   file by itself.
+2. **`expo-print` uses each platform's own rendering engine**, so the same
+   invoice comes out subtly different on iOS, Android and web — different font
+   substitution, spacing and page breaks. For a tax document a customer keeps,
+   one renderer producing one identical file is the point.
+
+The app still owns *viewing*, sharing and printing — it just doesn't build the
+file.
 
 ## Layout (top to bottom)
 
@@ -26,7 +56,14 @@ handles the page format directly.
 4. **Line items table**: description, quantity, unit price, line total —
    labor lines and part lines both flow through the same
    `invoice_line_items` table (`type` field distinguishes them for
-   reporting, not for display)
+   reporting, not for display).
+
+   **Labour is one flat line, not hours x rate.** Sri Lankan workshops bill a
+   single labour charge per job (`jobs.labor_cost`) and pay technicians a
+   monthly salary, so an hourly shop rate models neither side. Time tracked in
+   `job_labor_entries` is for utilisation insight and never reaches the
+   invoice. A shop that itemises ("brake job 3,500, oil change 1,200") can add
+   further labour lines to a draft invoice.
 5. **Totals block**: Subtotal → Tax (rate % shown explicitly, e.g. "VAT
    18%") → Total, right-aligned, total in bold/larger type
 6. **Payment info footer**: bank details or accepted payment methods text
@@ -45,12 +82,14 @@ handles the page format directly.
   editable — corrections go through a credit note or a new invoice, not
   an edit. (Prevents a paid PDF a customer already has from silently
   disagreeing with what's in the database.)
-- **Storage**: rendered PDF saved to object storage, `pdf_url` on the
-  invoice row is a signed, expiring link — not a public URL
-- **One template, tenant-branded**: a single HTML template with the
-  tenant's logo/colors slotted in is enough for Phase 1. Per-tenant custom
-  templates are a real feature request to wait for, not something to
-  build speculatively.
+- **Storage**: none. The PDF is regenerated per request from the invoice
+  rows, so there is no `pdf_url` column, no object storage, no signed URLs and
+  no orphaned files to clean up after a correction. At 2.4 ms a render this is
+  cheaper than storing and invalidating copies. Revisit only if rendering ever
+  shows up as real latency.
+- **One layout, tenant-branded**: a single builder with the tenant's details
+  slotted in is enough for Phase 1. Per-tenant custom templates are a real
+  feature request to wait for, not something to build speculatively.
 
 ## Data needed at render time
 

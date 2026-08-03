@@ -100,7 +100,11 @@ Time logged by technicians — feeds technician performance metrics.
 | job_id | FK |
 | technician_id | FK to `users` |
 | start_time, end_time | |
-| hourly_rate | rate at time of entry (snapshot, not live lookup) |
+| hourly_rate | nullable. Sri Lankan technicians are on monthly salaries, so this is neither what they earn nor what the customer pays — kept only for shops that genuinely pay hourly. Customer-facing labour is `jobs.labor_cost`. |
+
+`job_labor_entries` exists to track **time**, not money: how long a job took
+and who worked it, for utilisation and performance insight. See the labour
+billing note below.
 
 ### `job_parts`
 Parts consumed by a job — feeds job profitability.
@@ -156,7 +160,7 @@ stock quantity — no other code path should mutate it directly.
 | issue_date, due_date | |
 | subtotal, tax_rate, tax_amount, total | |
 | status | `draft` / `sent` / `partially_paid` / `paid` / `overdue` / `cancelled` |
-| pdf_url | generated file, see [invoice template doc](06-invoice-template.md) |
+| *(no pdf_url)* | PDFs are generated on demand, not stored — see [invoice template doc](06-invoice-template.md) |
 
 ### `invoice_line_items`
 
@@ -244,7 +248,7 @@ system. Payslip detail stays in the payroll tables for
 per-employee/compliance records.
 
 **Not in Phase 1**: payslip PDF export. Payslip data is viewable in-app;
-add a printable PDF (reusing the same WeasyPrint approach as invoices)
+add a printable PDF (reusing the same fpdf2 approach as invoices)
 only if staff actually need a physical/digital payslip handed to them.
 
 ## Tenant-scoped: recurring expenses

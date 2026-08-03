@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,7 +17,12 @@ from app.models.job_labor_entry import JobLaborEntry
 from app.models.job_part import JobPart
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobListResponse, JobRead, JobStatusUpdate, JobUpdate
-from app.schemas.job_labor_entry import JobLaborEntryCreate, JobLaborEntryRead
+from app.schemas.job_labor_entry import (
+    JobLaborEntryCreate,
+    JobLaborEntryListResponse,
+    JobLaborEntryRead,
+    JobLaborEntryUpdate,
+)
 from app.schemas.job_part import JobPartCreate, JobPartListResponse, JobPartRead
 
 router = APIRouter()
@@ -114,6 +120,11 @@ def get_job(
     return _get_job_or_404(db, current_user, job_id)
 
 
+# Once a job has been invoiced, its labor has already been billed. Editing it
+# afterwards would leave an issued invoice disagreeing with the job it came from.
+_LABOR_LOCKED_STATUSES = {JobStatus.invoiced, JobStatus.paid}
+
+
 @router.patch("/jobs/{job_id}", response_model=JobRead)
 def update_job(
     job_id: str,
@@ -125,6 +136,14 @@ def update_job(
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("assigned_technician_id") is not None:
         _get_technician_or_404(db, current_user.tenant_id, updates["assigned_technician_id"])
+    # The labour charge is billed at invoice time; changing it afterwards would
+    # leave an issued invoice disagreeing with the job. Editing the title or
+    # notes of an invoiced job stays harmless and is still allowed.
+    if "labor_cost" in updates and job.status in _LABOR_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"The labour charge cannot be changed on a job that is already {job.status.value}",
+        )
     for field, value in updates.items():
         setattr(job, field, value)
     db.commit()
@@ -255,3 +274,71 @@ def list_job_parts(
     total = query.count()
     parts = query.offset((page - 1) * page_size).limit(page_size).all()
     return JobPartListResponse(items=parts, total=total, page=page, page_size=page_size)
+
+
+@router.get("/jobs/{job_id}/labor-entries", response_model=JobLaborEntryListResponse)
+def list_labor_entries(
+    job_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> JobLaborEntryListResponse:
+    _get_job_or_404(db, current_user, job_id)
+    query = db.query(JobLaborEntry).filter(
+        JobLaborEntry.tenant_id == current_user.tenant_id, JobLaborEntry.job_id == job_id
+    )
+    total = query.count()
+    entries = query.offset((page - 1) * page_size).limit(page_size).all()
+    return JobLaborEntryListResponse(items=entries, total=total, page=page, page_size=page_size)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Make a datetime comparable.
+
+    Neither SQLite nor MySQL stores a timezone, so a value read back from the
+    database is naive even though the column is DateTime(timezone=True), while
+    a value parsed from a request body is aware. Comparing the two raises
+    TypeError. Everything is written as UTC by _now(), so naive values are
+    UTC.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+@router.patch("/jobs/{job_id}/labor-entries/{entry_id}", response_model=JobLaborEntryRead)
+def close_labor_entry(
+    job_id: str,
+    entry_id: str,
+    payload: JobLaborEntryUpdate,
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> JobLaborEntry:
+    job = _get_job_or_404(db, current_user, job_id)
+    if job.status in _LABOR_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Labor cannot be changed on a job that is already {job.status.value}",
+        )
+
+    entry = (
+        db.query(JobLaborEntry)
+        .filter(
+            JobLaborEntry.id == entry_id,
+            JobLaborEntry.job_id == job_id,
+            JobLaborEntry.tenant_id == current_user.tenant_id,
+        )
+        .first()
+    )
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Labor entry not found")
+
+    if _as_utc(payload.end_time) <= _as_utc(entry.start_time):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End time must be after the start time",
+        )
+
+    entry.end_time = payload.end_time
+    db.commit()
+    db.refresh(entry)
+    return entry
