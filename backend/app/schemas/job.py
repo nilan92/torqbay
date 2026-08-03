@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.job import JobStatus
 
@@ -33,6 +33,9 @@ class JobUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     assigned_technician_id: str | None = None
+    # Flat labour charge for this job. Sri Lankan workshops bill labour as one
+    # amount per job, not hours x rate.
+    labor_cost: float | None = Field(default=None, ge=0)
 
 
 class JobStatusUpdate(BaseModel):
