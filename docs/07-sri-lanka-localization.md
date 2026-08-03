@@ -74,3 +74,52 @@ channel(s) the tenant enables:
 - Invoice sent — link/PDF share
 - Payment reminder — for `overdue` invoices, on a schedule (e.g. daily
   check, not real-time)
+
+
+## Statutory payroll (Phase 1 payroll sub-plan)
+
+Verified August 2026. Rates change with each national budget — re-confirm with
+the Inland Revenue Department and the Department of Labour before implementing,
+and keep every rate configurable rather than compiled in.
+
+### EPF / ETF — the deductions that actually apply
+
+| Fund | Employer | Employee | Basis |
+|---|---|---|---|
+| EPF (Employees' Provident Fund) | 12% | 8% | Total monthly earnings |
+| ETF (Employees' Trust Fund) | 3% | — | Total monthly earnings |
+
+Both are calculated on **total monthly earnings**, which is itself the evidence
+that the workforce is salaried rather than hourly — see the labour billing note
+in [data model](03-data-model.md).
+
+### APIT / PAYE — usually zero for workshop staff
+
+Personal relief is **LKR 1,800,000 per year (LKR 150,000 per month)** from
+1 April 2025. Above that, progressive bands apply: 6%, 18%, 24%, 30%, 36%
+(the old 12% band was removed).
+
+**A typical mechanic earns well under the relief threshold, so their PAYE is
+zero.** The payroll module's common case is EPF and ETF only. It still has to
+handle APIT correctly for an owner or manager on a higher salary — but a
+payslip showing no income tax is normal, not a bug.
+
+### Gratuity — out of scope for most tenants
+
+The Payment of Gratuity Act No. 12 of 1983 applies only to employers with
+**more than 15 employees** in the preceding twelve months, and only to staff
+who have completed **five years of service**. It is then half a month's
+terminal salary per year of service.
+
+Most target workshops are under 15 staff, so gratuity is **not implemented in
+Phase 1**. Revisit if larger service centres become customers — it is a real
+statutory liability, not an optional benefit.
+
+### Sources
+
+- [EPF, ETF and gratuity overview — Simplebooks](https://simplebooks.com/srilanka/epf-etf/)
+- [Employees' Provident Fund — Central Bank of Sri Lanka](https://www.cbsl.gov.lk/en/employees-provident-fund)
+- [APIT/PAYE tables 2025/26 — TaxCalculator.lk](https://taxcalculator.lk/apit-paye-tax-tables-2025-2026-complete-guide-for-sri-lankan-employers-and-hr-managers/)
+- [Sri Lanka payroll tax and compliance guide 2026 — RemotePeople](https://remotepeople.com/countries/sri-lanka/hire-employees/payroll-tax/)
+- [VAT changes 2026 — Conventus Law](https://conventuslaw.com/report/sri-lanka-vat-changes-2026-key-updates-businesses-must-know/)
+- [VAT threshold reversal — EconomyNext](https://economynext.com/explainer-sri-lanka-govt-shelves-vat-threshold-reduction-on-political-economic-u-turn-276354/)
