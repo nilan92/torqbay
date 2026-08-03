@@ -120,6 +120,11 @@ def get_job(
     return _get_job_or_404(db, current_user, job_id)
 
 
+# Once a job has been invoiced, its labor has already been billed. Editing it
+# afterwards would leave an issued invoice disagreeing with the job it came from.
+_LABOR_LOCKED_STATUSES = {JobStatus.invoiced, JobStatus.paid}
+
+
 @router.patch("/jobs/{job_id}", response_model=JobRead)
 def update_job(
     job_id: str,
@@ -131,6 +136,14 @@ def update_job(
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("assigned_technician_id") is not None:
         _get_technician_or_404(db, current_user.tenant_id, updates["assigned_technician_id"])
+    # The labour charge is billed at invoice time; changing it afterwards would
+    # leave an issued invoice disagreeing with the job. Editing the title or
+    # notes of an invoiced job stays harmless and is still allowed.
+    if "labor_cost" in updates and job.status in _LABOR_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"The labour charge cannot be changed on a job that is already {job.status.value}",
+        )
     for field, value in updates.items():
         setattr(job, field, value)
     db.commit()
@@ -278,11 +291,6 @@ def list_labor_entries(
     total = query.count()
     entries = query.offset((page - 1) * page_size).limit(page_size).all()
     return JobLaborEntryListResponse(items=entries, total=total, page=page, page_size=page_size)
-
-
-# Once a job has been invoiced, its labor has already been billed. Editing it
-# afterwards would leave an issued invoice disagreeing with the job it came from.
-_LABOR_LOCKED_STATUSES = {JobStatus.invoiced, JobStatus.paid}
 
 
 def _as_utc(value: datetime) -> datetime:

@@ -100,7 +100,11 @@ Time logged by technicians — feeds technician performance metrics.
 | job_id | FK |
 | technician_id | FK to `users` |
 | start_time, end_time | |
-| hourly_rate | rate at time of entry (snapshot, not live lookup) |
+| hourly_rate | nullable. Sri Lankan technicians are on monthly salaries, so this is neither what they earn nor what the customer pays — kept only for shops that genuinely pay hourly. Customer-facing labour is `jobs.labor_cost`. |
+
+`job_labor_entries` exists to track **time**, not money: how long a job took
+and who worked it, for utilisation and performance insight. See the labour
+billing note below.
 
 ### `job_parts`
 Parts consumed by a job — feeds job profitability.

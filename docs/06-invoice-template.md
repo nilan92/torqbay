@@ -56,7 +56,14 @@ file.
 4. **Line items table**: description, quantity, unit price, line total —
    labor lines and part lines both flow through the same
    `invoice_line_items` table (`type` field distinguishes them for
-   reporting, not for display)
+   reporting, not for display).
+
+   **Labour is one flat line, not hours x rate.** Sri Lankan workshops bill a
+   single labour charge per job (`jobs.labor_cost`) and pay technicians a
+   monthly salary, so an hourly shop rate models neither side. Time tracked in
+   `job_labor_entries` is for utilisation insight and never reaches the
+   invoice. A shop that itemises ("brake job 3,500, oil change 1,200") can add
+   further labour lines to a draft invoice.
 5. **Totals block**: Subtotal → Tax (rate % shown explicitly, e.g. "VAT
    18%") → Total, right-aligned, total in bold/larger type
 6. **Payment info footer**: bank details or accepted payment methods text

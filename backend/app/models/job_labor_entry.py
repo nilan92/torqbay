@@ -13,4 +13,8 @@ class JobLaborEntry(Base, TenantScopedMixin):
     technician_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    hourly_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    # Optional: technicians here are on monthly salaries, so an hourly rate is
+    # neither what the technician earns nor what the customer is charged. Kept
+    # for shops that genuinely pay hourly. Customer-facing labour is billed via
+    # Job.labor_cost.
+    hourly_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
