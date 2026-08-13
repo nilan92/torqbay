@@ -3,11 +3,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.v1.customers import STAFF_ROLES
 from app.core.dependencies import get_current_user, require_role
 from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.user import UserCreate, UserListResponse, UserRead
+from app.schemas.user import (
+    TechnicianListResponse,
+    UserCreate,
+    UserListResponse,
+    UserRead,
+)
 
 router = APIRouter()
 
@@ -52,3 +58,23 @@ def list_users(
     total = query.count()
     users = query.offset((page - 1) * page_size).limit(page_size).all()
     return UserListResponse(items=users, total=total, page=page, page_size=page_size)
+
+
+@router.get("/technicians", response_model=TechnicianListResponse)
+def list_technicians(
+    current_user: Annotated[User, Depends(require_role(*STAFF_ROLES))],
+    db: Annotated[Session, Depends(get_db)],
+) -> TechnicianListResponse:
+    """id + name only, for staff assigning a job or starting a timer.
+
+    Deliberately not GET /users: that endpoint is owner+manager only and
+    returns every field including email and role. Frontdesk can assign jobs
+    and record labour but couldn't see who to pick.
+    """
+    technicians = (
+        db.query(User)
+        .filter(User.tenant_id == current_user.tenant_id, User.role == UserRole.technician)
+        .order_by(User.name)
+        .all()
+    )
+    return TechnicianListResponse(items=technicians, total=len(technicians))

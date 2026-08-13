@@ -28,3 +28,17 @@ class UserListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TechnicianSummary(BaseModel):
+    """A picker entry — id and name only, never email/role/pay data."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+
+
+class TechnicianListResponse(BaseModel):
+    items: list[TechnicianSummary]
+    total: int
