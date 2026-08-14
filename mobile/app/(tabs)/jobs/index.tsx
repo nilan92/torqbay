@@ -5,6 +5,7 @@ import { useJobs, type Job } from "@/jobs/use-jobs";
 import { colors, useBrandColors } from "@/theme/colors";
 import { continuous, radius, spacing } from "@/theme/layout";
 import { type } from "@/theme/type";
+import { Button } from "@/ui/button";
 import { Centered, EmptyState } from "@/ui/empty-state";
 import { StatusTag } from "@/ui/status-tag";
 
@@ -72,6 +73,12 @@ export default function Jobs() {
       keyExtractor={(job) => job.id}
       renderItem={({ item }) => <JobCard job={item} />}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      ListHeaderComponent={
+        <Link href="/(tabs)/jobs/new" asChild>
+          <Button label="New job" onPress={() => {}} />
+        </Link>
+      }
+      ListHeaderComponentStyle={{ marginBottom: spacing.md }}
       ListEmptyComponent={
         <EmptyState title="No jobs yet" message="Jobs you create will show up here." />
       }

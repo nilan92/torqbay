@@ -46,6 +46,24 @@ export function useJob(jobId: string) {
   });
 }
 
+export function useCreateJob() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: {
+      customer_id: string;
+      asset_id: string;
+      title: string;
+      description?: string;
+      assigned_technician_id?: string;
+    }) => apiFetch<Job>("/api/v1/jobs", { method: "POST", body, token: accessToken }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+}
+
 /** Job status transitions (Start, Mark Done, Cancel) and the flat labour charge. */
 export function useUpdateJob(jobId: string) {
   const { accessToken } = useAuth();
