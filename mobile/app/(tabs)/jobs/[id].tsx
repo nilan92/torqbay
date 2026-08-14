@@ -131,16 +131,13 @@ export default function JobDetail() {
       <Stack.Screen options={{ title: job.title }} />
 
       <View style={{ gap: spacing.sm }}>
-        <Text selectable style={{ ...type.title, color: colors.label }}>
-          {job.title}
-        </Text>
         {customer ? (
-          <Text selectable style={{ ...type.body, color: colors.secondaryLabel }}>
+          <Text selectable style={{ ...type.heading, color: colors.label }}>
             {customer.name}
           </Text>
         ) : null}
         {job.description ? (
-          <Text selectable style={{ ...type.body, color: colors.label }}>
+          <Text selectable style={{ ...type.body, color: colors.secondaryLabel }}>
             {job.description}
           </Text>
         ) : null}
