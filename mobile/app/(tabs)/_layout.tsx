@@ -44,6 +44,11 @@ export default function TabsLayout() {
         name="jobs"
         options={{
           title: "Jobs",
+          // The jobs tab has its own nested Stack (app/(tabs)/jobs/_layout.tsx)
+          // which renders its own header for both the list and the detail
+          // screen. Without this, the Tabs navigator's header stacks on top
+          // of it — "Jobs" shown twice, once from each navigator.
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <TabIcon sfSymbol="wrench.and.screwdriver" glyph="🔧" color={color} />
           ),
