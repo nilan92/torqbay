@@ -1,19 +1,19 @@
-import { ScrollView, Text } from "react-native";
+import { ScrollView } from "react-native";
 
 import { colors } from "@/theme/colors";
-import { spacing } from "@/theme/layout";
-import { type } from "@/theme/type";
+import { EmptyState } from "@/ui/empty-state";
 
 export default function Customers() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
-      <Text style={{ ...type.body, color: colors.secondaryLabel }}>
-        Customers arrive in the next release.
-      </Text>
+      <EmptyState
+        title="Customers"
+        message="Managing customers and their vehicles is coming in the next release."
+      />
     </ScrollView>
   );
 }

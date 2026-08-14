@@ -1,19 +1,19 @@
-import { ScrollView, Text } from "react-native";
+import { ScrollView } from "react-native";
 
 import { colors } from "@/theme/colors";
-import { spacing } from "@/theme/layout";
-import { type } from "@/theme/type";
+import { EmptyState } from "@/ui/empty-state";
 
 export default function Inventory() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
-      <Text style={{ ...type.body, color: colors.secondaryLabel }}>
-        Inventory arrives in the next release.
-      </Text>
+      <EmptyState
+        title="Inventory"
+        message="Stock levels and parts tracking are coming in the next release."
+      />
     </ScrollView>
   );
 }

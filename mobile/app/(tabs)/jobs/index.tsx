@@ -1,10 +1,11 @@
 import { Link } from "expo-router";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text } from "react-native";
 
 import { useJobs, type Job } from "@/jobs/use-jobs";
 import { colors, useBrandColors } from "@/theme/colors";
 import { continuous, radius, spacing } from "@/theme/layout";
 import { type } from "@/theme/type";
+import { Centered, EmptyState } from "@/ui/empty-state";
 import { StatusTag } from "@/ui/status-tag";
 
 function JobCard({ job }: { job: Job }) {
@@ -34,14 +35,6 @@ function JobCard({ job }: { job: Job }) {
         <StatusTag status={job.status} />
       </Pressable>
     </Link>
-  );
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <View style={{ padding: spacing.xxl, alignItems: "center", gap: spacing.md }}>
-      {children}
-    </View>
   );
 }
 
@@ -80,12 +73,7 @@ export default function Jobs() {
       renderItem={({ item }) => <JobCard job={item} />}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       ListEmptyComponent={
-        <Centered>
-          <Text style={{ ...type.heading, color: colors.label }}>No jobs yet</Text>
-          <Text style={{ ...type.caption, color: colors.secondaryLabel, textAlign: "center" }}>
-            Jobs you create will show up here.
-          </Text>
-        </Centered>
+        <EmptyState title="No jobs yet" message="Jobs you create will show up here." />
       }
     />
   );
