@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
+import { Link } from "expo-router";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 
 import { useJobs, type Job } from "@/jobs/use-jobs";
 import { colors, useBrandColors } from "@/theme/colors";
@@ -8,28 +9,31 @@ import { StatusTag } from "@/ui/status-tag";
 
 function JobCard({ job }: { job: Job }) {
   return (
-    <View
-      style={{
-        backgroundColor: colors.groupedBackground,
-        borderRadius: radius.md,
-        padding: spacing.lg,
-        gap: spacing.sm,
-        ...continuous,
-      }}
-    >
-      <Text selectable style={{ ...type.heading, color: colors.label }}>
-        {job.title}
-      </Text>
-      {job.description ? (
-        <Text
-          numberOfLines={2}
-          style={{ ...type.caption, color: colors.secondaryLabel }}
-        >
-          {job.description}
+    <Link href={`/(tabs)/jobs/${job.id}`} asChild>
+      <Pressable
+        style={({ pressed }) => ({
+          backgroundColor: colors.groupedBackground,
+          borderRadius: radius.md,
+          padding: spacing.lg,
+          gap: spacing.sm,
+          opacity: pressed ? 0.7 : 1,
+          ...continuous,
+        })}
+      >
+        <Text selectable style={{ ...type.heading, color: colors.label }}>
+          {job.title}
         </Text>
-      ) : null}
-      <StatusTag status={job.status} />
-    </View>
+        {job.description ? (
+          <Text
+            numberOfLines={2}
+            style={{ ...type.caption, color: colors.secondaryLabel }}
+          >
+            {job.description}
+          </Text>
+        ) : null}
+        <StatusTag status={job.status} />
+      </Pressable>
+    </Link>
   );
 }
 
