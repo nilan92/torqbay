@@ -38,13 +38,14 @@ function Row({
   return (
     <Pressable
       onPress={onPress}
-      style={{
+      style={({ pressed }) => ({
         backgroundColor: colors.groupedBackground,
         borderRadius: radius.md,
         padding: spacing.lg,
         gap: spacing.xs,
+        opacity: onPress && pressed ? 0.6 : 1,
         ...continuous,
-      }}
+      })}
     >
       <Text selectable style={{ ...type.body, color: colors.label }}>
         {primary}
