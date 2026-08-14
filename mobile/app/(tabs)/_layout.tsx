@@ -58,6 +58,9 @@ export default function TabsLayout() {
         name="customers"
         options={{
           title: "Customers",
+          // Nested Stack (app/(tabs)/customers/_layout.tsx) provides its own
+          // headers — see the same fix on the jobs tab.
+          headerShown: false,
           href: canSeeTab(role, "customers") ? undefined : null,
           tabBarIcon: ({ color }) => <TabIcon sfSymbol="person.2" glyph="👥" color={color} />,
         }}
