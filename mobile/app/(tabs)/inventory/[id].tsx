@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { ApiError } from "@/api/client";
 import { useInventoryItem, useUpdateInventoryItem } from "@/inventory/use-inventory-items";
 import { colors, useBrandColors } from "@/theme/colors";
+import { formatCurrency } from "@/theme/format-currency";
 import { spacing } from "@/theme/layout";
 import { type } from "@/theme/type";
 import { Button } from "@/ui/button";
@@ -146,7 +147,10 @@ export default function InventoryItemDetail() {
 
           <View style={{ gap: spacing.xs }}>
             <Text style={{ ...type.overline, color: colors.secondaryLabel }}>On hand</Text>
-            <Text style={{ ...type.numeric, fontSize: 24, color: low ? brand.accent : colors.label }}>
+            <Text
+              selectable
+              style={{ ...type.numeric, fontSize: 24, color: low ? brand.accent : colors.label }}
+            >
               {item.quantity_on_hand}
             </Text>
             <Text style={{ ...type.caption, color: colors.secondaryLabel }}>
@@ -163,14 +167,14 @@ export default function InventoryItemDetail() {
           <View style={{ flexDirection: "row", gap: spacing.xl }}>
             <View style={{ gap: spacing.xs }}>
               <Text style={{ ...type.overline, color: colors.secondaryLabel }}>Cost</Text>
-              <Text style={{ ...type.numeric, color: colors.label }}>
-                LKR {item.unit_cost.toFixed(2)}
+              <Text selectable style={{ ...type.numeric, color: colors.label }}>
+                {formatCurrency(item.unit_cost)}
               </Text>
             </View>
             <View style={{ gap: spacing.xs }}>
               <Text style={{ ...type.overline, color: colors.secondaryLabel }}>Price</Text>
-              <Text style={{ ...type.numeric, color: colors.label }}>
-                LKR {item.unit_price.toFixed(2)}
+              <Text selectable style={{ ...type.numeric, color: colors.label }}>
+                {formatCurrency(item.unit_price)}
               </Text>
             </View>
           </View>

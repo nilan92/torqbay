@@ -26,7 +26,9 @@ function Row({ primary, secondary }: { primary: string; secondary?: string }) {
         {primary}
       </Text>
       {secondary ? (
-        <Text style={{ ...type.caption, color: colors.secondaryLabel }}>{secondary}</Text>
+        <Text selectable style={{ ...type.caption, color: colors.secondaryLabel }}>
+          {secondary}
+        </Text>
       ) : null}
     </View>
   );

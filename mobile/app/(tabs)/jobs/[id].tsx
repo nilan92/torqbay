@@ -10,6 +10,7 @@ import { useJob, useUpdateJob } from "@/jobs/use-jobs";
 import { useLaborEntries, useStartTimer, useStopTimer } from "@/jobs/use-labor-entries";
 import { useTechnicians } from "@/technicians/use-technicians";
 import { colors, useBrandColors } from "@/theme/colors";
+import { formatCurrency } from "@/theme/format-currency";
 import { continuous, radius, spacing } from "@/theme/layout";
 import { type } from "@/theme/type";
 import { Button } from "@/ui/button";
@@ -51,7 +52,9 @@ function Row({
         {primary}
       </Text>
       {secondary ? (
-        <Text style={{ ...type.caption, color: colors.secondaryLabel }}>{secondary}</Text>
+        <Text selectable style={{ ...type.caption, color: colors.secondaryLabel }}>
+          {secondary}
+        </Text>
       ) : null}
     </Pressable>
   );
@@ -272,7 +275,7 @@ export default function JobDetail() {
                   secondary={
                     part.overdrawn
                       ? `Short by ${part.shortfall} — flagged for reconciliation`
-                      : `LKR ${(part.quantity * part.unit_price_at_time).toFixed(2)}`
+                      : formatCurrency(part.quantity * part.unit_price_at_time)
                   }
                 />
               );
