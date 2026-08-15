@@ -31,4 +31,9 @@ class Job(Base, TenantScopedMixin):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    labor_cost: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
+    # Float(precision=53): plain Float is a 4-byte MySQL FLOAT (~7 significant
+    # digits) and silently rounds large LKR amounts. The mobile job detail
+    # screen writes real labour charges to this column live.
+    labor_cost: Mapped[float] = mapped_column(
+        Float(precision=53), default=0.0, server_default="0", nullable=False
+    )
