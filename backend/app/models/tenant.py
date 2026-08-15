@@ -18,5 +18,7 @@ class Tenant(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="LKR", server_default="LKR", nullable=False)
-    default_tax_rate: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
+    default_tax_rate: Mapped[float] = mapped_column(
+        Float(precision=53), default=0.0, server_default="0", nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
