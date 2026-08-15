@@ -69,6 +69,9 @@ export default function TabsLayout() {
         name="inventory"
         options={{
           title: "Inventory",
+          // Nested Stack (app/(tabs)/inventory/_layout.tsx) provides its own
+          // headers — see the same fix on the jobs tab.
+          headerShown: false,
           href: canSeeTab(role, "inventory") ? undefined : null,
           tabBarIcon: ({ color }) => <TabIcon sfSymbol="shippingbox" glyph="📦" color={color} />,
         }}
