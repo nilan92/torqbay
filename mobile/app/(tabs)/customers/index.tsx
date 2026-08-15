@@ -25,7 +25,9 @@ function CustomerCard({ customer }: { customer: Customer }) {
           {customer.name}
         </Text>
         {customer.phone ? (
-          <Text style={{ ...type.caption, color: colors.secondaryLabel }}>{customer.phone}</Text>
+          <Text selectable style={{ ...type.caption, color: colors.secondaryLabel }}>
+            {customer.phone}
+          </Text>
         ) : null}
       </Pressable>
     </Link>

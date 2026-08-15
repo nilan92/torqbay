@@ -51,7 +51,9 @@ function SelectRow({
         {primary}
       </Text>
       {secondary ? (
-        <Text style={{ ...type.caption, color: colors.secondaryLabel }}>{secondary}</Text>
+        <Text selectable style={{ ...type.caption, color: colors.secondaryLabel }}>
+          {secondary}
+        </Text>
       ) : null}
     </Pressable>
   );

@@ -43,7 +43,9 @@ function ItemCard({ item }: { item: InventoryItem }) {
             {item.quantity_on_hand}
           </Text>
         </View>
-        <Text style={{ ...type.caption, color: colors.secondaryLabel }}>{item.sku}</Text>
+        <Text selectable style={{ ...type.caption, color: colors.secondaryLabel }}>
+          {item.sku}
+        </Text>
         {low ? (
           <Text style={{ ...type.overline, color: brand.accent }}>Low stock</Text>
         ) : null}
